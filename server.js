@@ -389,6 +389,7 @@ function memberList(roomId) {
     color: m.color,
     joinedAt: m.joinedAt,
     cursor: m.cursor || null,
+    pageId: m.pageId || null,
   }));
 }
 
@@ -668,6 +669,7 @@ io.on('connection', (socket) => {
       color: socket.data.user.color,
       joinedAt: Date.now(),
       cursor: null,
+      pageId: null,
     });
 
     room.name = meta.name;
@@ -747,7 +749,20 @@ io.on('connection', (socket) => {
       y: payload.y,
       name: member.name,
       color: member.color,
+      pageId: member.pageId || null,
     });
+  });
+
+  // 成员切换页面：广播其所在页面，其他成员据此显示半透明光标与页名
+  socket.on('update-page', (payload) => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    const map = roomMembers.get(roomId);
+    const member = map && map.get(socket.id);
+    if (!member) return;
+    member.pageId = (payload && payload.pageId) ? String(payload.pageId) : null;
+    socket.to(roomId).emit('member-page', { userId: member.userId, pageId: member.pageId });
+    broadcastMembers(roomId);
   });
 
   // 修改用户显示名称（同步给房间内所有成员）

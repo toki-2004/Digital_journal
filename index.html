@@ -178,7 +178,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 }
 #board { display: block; position: absolute; left: 0; top: 0; touch-action: none; }
 #cursorLayer { position: absolute; inset: 0; pointer-events: none; }
-.remote-cursor { position: absolute; display: flex; align-items: center; gap: 4px; transform: translate(-1px, -1px); }
+.remote-cursor { position: absolute; display: flex; align-items: center; gap: 4px; transform: translate(-1px, -1px); transition: opacity .15s; }
 .remote-cursor .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
 .remote-cursor .nm {
   font-size: 11px; color: #fff; padding: 1px 6px; border-radius: 8px;
@@ -310,6 +310,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .member-row .tag { font-size: 10px; color: var(--muted); background: #f0f0ee; border-radius: 10px; padding: 1px 7px; }
 .member-row .tag.me { color: var(--accent); background: var(--accent-soft); }
 .member-row .tag.admin { color: #9a6b00; background: #fbf3d9; }
+.member-row .tag.page { color: #4a7d4a; background: #eaf5ea; }
 .member-row .cursor-pos { font-size: 11px; color: var(--muted); }
 
 /* ---------- 弹窗与提示 ---------- */
@@ -739,11 +740,25 @@ socket.on('members', (list) => {
   // 清掉已不在线成员的光标
   const ids = new Set(members.map((m) => m.userId));
   for (const k of Array.from(memberCursors.keys())) if (!ids.has(k)) memberCursors.delete(k);
+  // 同步成员所在页面
+  for (const m of members) {
+    const cur = memberCursors.get(m.userId);
+    if (cur) cur.pageId = m.pageId || null;
+  }
   renderMembers();
 });
 
 socket.on('cursor', (p) => {
-  memberCursors.set(p.userId, { x: p.x, y: p.y, name: p.name, color: p.color });
+  memberCursors.set(p.userId, { x: p.x, y: p.y, name: p.name, color: p.color, pageId: p.pageId || null });
+  renderCursorLayer();
+  renderMembers();
+});
+
+socket.on('member-page', (p) => {
+  const cur = memberCursors.get(p.userId);
+  if (cur) cur.pageId = p.pageId || null;
+  const m = members.find((x) => x.userId === p.userId);
+  if (m) m.pageId = p.pageId || null;
   renderCursorLayer();
   renderMembers();
 });
@@ -1658,14 +1673,23 @@ function renderMembers() {
     const isMe = m.userId === me.id;
     const isAdminRow = roomData && roomData.createdBy === m.userId;
     const cur = m.cursor && m.cursor.x >= 0 ? '(' + Math.round(m.cursor.x) + ', ' + Math.round(m.cursor.y) + ')' : '';
+    const pageName = m.pageId ? pageNameOf(m.pageId) : '';
     return '<div class="member-row">'
       + '<div class="avatar" style="background:' + esc(m.color) + '">' + esc(String(m.name).slice(0, 1)) + '</div>'
       + '<div class="nm">' + esc(m.name) + '</div>'
       + (isAdminRow ? '<span class="tag admin">创建者</span>' : '')
       + (isMe ? '<span class="tag me">我</span>' : '')
+      + (pageName ? '<span class="tag page">' + esc(pageName) + '</span>' : '')
       + (cur ? '<span class="cursor-pos">' + cur + '</span>' : '')
       + '</div>';
   }).join('');
+}
+
+/** 根据页面 ID 取页名（未知时显示“另一页”） */
+function pageNameOf(pageId) {
+  if (!roomData || !roomData.pages) return '另一页';
+  const p = roomData.pages.find((x) => x.id === pageId);
+  return p ? p.name : '另一页';
 }
 
 function renderCursorLayer() {
@@ -1674,9 +1698,12 @@ function renderCursorLayer() {
   for (const [userId, cur] of memberCursors) {
     if (userId === me.id || !cur || cur.x < 0) continue;
     const sp = logicalToScreen(cur);
-    html += '<div class="remote-cursor" style="left:' + sp.x + 'px;top:' + sp.y + 'px">'
+    const samePage = !cur.pageId || cur.pageId === activePageId;
+    const opacity = samePage ? '1' : '0.35';
+    const pageLabel = samePage ? '' : ' · ' + pageNameOf(cur.pageId);
+    html += '<div class="remote-cursor" style="left:' + sp.x + 'px;top:' + sp.y + 'px;opacity:' + opacity + '">'
       + '<span class="dot" style="background:' + esc(cur.color) + '"></span>'
-      + '<span class="nm" style="background:' + esc(cur.color) + '">' + esc(cur.name) + '</span>'
+      + '<span class="nm" style="background:' + esc(cur.color) + '">' + esc(cur.name) + pageLabel + '</span>'
       + '</div>';
   }
   layer.innerHTML = html;
@@ -2565,6 +2592,7 @@ async function openRoom(roomId, password) {
     setConn('on');
     toast('已进入「' + roomData.name + '」', 'ok');
     loadActivePage(); // 只加载当前显示的这一页，避免一次性拉全量大图
+    socket.emit('update-page', { pageId: activePage.id });
   });
 }
 
@@ -2643,7 +2671,9 @@ function switchPage(id, silent) {
   if (currentAction) cancelCurrentAction();
   updateInspector();
   renderPageBar();
+  renderMembers();
   hideElementMenu();
+  socket.emit('update-page', { pageId: p.id });
   if (!silent) toast('已切换到「' + p.name + '」');
   if (!p.loaded) {
     // 未加载的页面按需拉取内容
