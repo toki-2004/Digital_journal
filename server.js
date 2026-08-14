@@ -465,6 +465,14 @@ const ELEMENT_OPS = new Set([
   'erase', 'delete-elements', 'duplicate', 'reorder', 'clear-annotations',
 ]);
 
+/** 元素创建信息由服务端盖章，保证创建人与创建时间可信 */
+function stampElement(el, user) {
+  if (!el || !user) return el;
+  if (!el.createdBy) el.createdBy = { id: user.id, name: user.name };
+  if (el.createdAt == null) el.createdAt = Date.now();
+  return el;
+}
+
 /** 定位操作目标页面：op.pageId 优先，缺省回退到第一页 */
 function pageOf(room, op) {
   if (!Array.isArray(room.pages) || !room.pages.length) return null;
@@ -494,7 +502,7 @@ function pushHistory(room, op, user) {
 }
 
 /** 把持久化操作应用到房间状态；返回错误信息或 null */
-function applyOp(room, op) {
+function applyOp(room, op, user) {
   if (!op || typeof op.type !== 'string') return '非法操作';
   if (op.type === 'add-page') {
     if (!op.page || !op.page.id) return '缺少页面数据';
@@ -529,11 +537,12 @@ function applyOp(room, op) {
     case 'add-image': {
       if (!op.element || !op.element.id) return '缺少图片数据';
       if (images.some((e) => e.id === op.element.id)) return null; // 幂等
-      images.push(op.element);
+      images.push(stampElement(op.element, user));
       return null;
     }
     case 'add-annotation': {
       if (!op.element || !op.element.id) return '缺少标注数据';
+      stampElement(op.element, user);
       const i = annotations.findIndex((e) => e.id === op.element.id);
       if (i >= 0) annotations[i] = op.element;
       else annotations.push(op.element);
@@ -575,6 +584,7 @@ function applyOp(room, op) {
     }
     case 'duplicate': {
       for (const el of op.elements || []) {
+        stampElement(el, user);
         if (el.layer === 'image') images.push(el);
         else annotations.push(el);
       }
@@ -676,7 +686,7 @@ io.on('connection', (socket) => {
     if (!canEdit(room, user)) {
       return doAck({ ok: false, reason: '该房间为只读，您没有编辑权限' });
     }
-    const err = applyOp(room, op);
+    const err = applyOp(room, op, user);
     if (err) return doAck({ ok: false, reason: err });
 
     const historyEntry = pushHistory(room, op, user);
