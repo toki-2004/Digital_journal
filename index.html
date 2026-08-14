@@ -247,6 +247,13 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .element-menu .em-title { font-weight: 600; margin-bottom: 6px; font-size: 13px; }
 .element-menu .em-row { display: flex; justify-content: space-between; gap: 14px; padding: 2px 0; color: var(--muted); }
 .element-menu .em-row b { color: var(--ink); font-weight: 500; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-loading {
+  position: absolute; inset: 0; z-index: 45; background: rgba(255,255,255,.78);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  color: var(--muted); font-size: 13px; backdrop-filter: blur(2px);
+}
+.pl-spinner { width: 30px; height: 30px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- 右侧边栏 ---------- */
 .sidebar {
@@ -504,6 +511,10 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
         <div class="em-title" id="emTitle">元素信息</div>
         <div class="em-row"><span>创建人</span><b id="emCreator"></b></div>
         <div class="em-row"><span>创建时间</span><b id="emTime"></b></div>
+      </div>
+      <div class="page-loading hidden" id="pageLoading">
+        <div class="pl-spinner"></div>
+        <div class="pl-text">页面加载中…</div>
       </div>
     </div>
 
@@ -984,8 +995,9 @@ function snapshotForIDB() {
     pages: roomData.pages.map((p) => ({
       id: p.id,
       name: p.name,
-      images: JSON.parse(JSON.stringify(p.images)),
-      annotations: JSON.parse(JSON.stringify(p.annotations)),
+      loaded: !!p.loaded,
+      images: p.loaded ? JSON.parse(JSON.stringify(p.images)) : [],
+      annotations: p.loaded ? JSON.parse(JSON.stringify(p.annotations)) : [],
     })),
     history: JSON.parse(JSON.stringify(roomData.history || [])),
   };
@@ -1518,6 +1530,7 @@ function applyPersistedOp(op) {
   }
   const page = pageById(op.pageId);
   if (!page) return;
+  if (!page.loaded) return; // 未加载页面的增量操作无需本地应用，切换时按需拉取全量
   const images = page.images;
   const annotations = page.annotations;
   switch (op.type) {
@@ -1586,6 +1599,7 @@ function applyTransientOp(op) {
   if (!roomData) return;
   const page = pageById(op.pageId);
   if (!page) return;
+  if (!page.loaded) return;
   switch (op.type) {
     case 'image-transform': {
       const im = page.images.find((e) => e.id === op.id);
@@ -1702,6 +1716,7 @@ function bindCanvasEvents() {
 
 function onPointerDown(e) {
   if (!roomData) return;
+  if (pageLoading) return; // 页面内容加载中，禁止操作避免覆盖数据
   hideElementMenu();
   const target = e.target;
   if (target && target.closest && (target.closest('.float-inspector') || target.closest('.text-edit'))) return;
@@ -2368,7 +2383,19 @@ async function addImageFromFile(file) {
 
 // ---------- 房间打开 / 关闭 ----------
 function applyServerData(data) {
-  const pages = normalizePages(data);
+  // 合并式更新：保留会话中已加载的页面内容，其余页面保持未加载（按需拉取）
+  const oldPages = roomData ? roomData.pages : null;
+  const pages = normalizePages(data).map((meta) => {
+    const old = oldPages ? oldPages.find((p) => p.id === meta.id) : null;
+    const src = (old && old.loaded) ? old : (meta.loaded === true ? meta : null);
+    return {
+      id: meta.id,
+      name: meta.name || '第 1 页',
+      images: src ? (src.images || []) : [],
+      annotations: src ? (src.annotations || []) : [],
+      loaded: !!src,
+    };
+  });
   roomData = {
     id: data.id,
     name: data.name,
@@ -2415,16 +2442,64 @@ function normalizePages(data) {
     return data.pages.map((p) => ({
       id: p.id,
       name: p.name || '第 1 页',
-      images: p.images || [],
-      annotations: p.annotations || [],
+      loaded: p.loaded === true || (Array.isArray(p.images) && p.images.length) || (Array.isArray(p.annotations) && p.annotations.length),
+      images: (Array.isArray(p.images) && (p.loaded === true || p.images.length)) ? p.images : [],
+      annotations: (Array.isArray(p.annotations) && (p.loaded === true || p.annotations.length)) ? p.annotations : [],
     }));
   }
   return [{
     id: 'page_1',
     name: '第 1 页',
+    loaded: true,
     images: data.images || [],
     annotations: data.annotations || [],
   }];
+}
+
+let pageLoading = false;
+
+function showLoading(show) {
+  $('#pageLoading').classList.toggle('hidden', !show);
+}
+
+/** 按需加载一个页面的完整内容（服务器优先，失败回退 IndexedDB） */
+async function loadPageContent(pageId) {
+  const page = pageById(pageId);
+  if (!page || page.loaded) return true;
+  try {
+    const data = await fetchJSON('/api/rooms/' + currentRoomId + '/page/' + pageId, {}, 30000);
+    page.images = data.images || [];
+    page.annotations = data.annotations || [];
+    for (const im of page.images) ensureImage(im);
+    page.loaded = true;
+    idbPut(snapshotForIDB());
+    return true;
+  } catch (e) {
+    // 服务器不可用时回退本地缓存
+    const cached = await idbGet(currentRoomId);
+    if (cached && cached.pages) {
+      const cp = cached.pages.find((p) => p.id === pageId);
+      if (cp && (cp.loaded === true || (cp.images && cp.images.length) || (cp.annotations && cp.annotations.length))) {
+        page.images = cp.images || [];
+        page.annotations = cp.annotations || [];
+        for (const im of page.images) ensureImage(im);
+        page.loaded = true;
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
+/** 加载当前激活页面（进入房间时调用） */
+async function loadActivePage() {
+  if (!activePage || activePage.loaded) return;
+  pageLoading = true;
+  showLoading(true);
+  const ok = await loadPageContent(activePage.id);
+  pageLoading = false;
+  showLoading(false);
+  if (!ok) toast('无法加载「' + activePage.name + '」的内容，请检查服务器', 'error');
 }
 
 function updatePermUI() {
@@ -2488,11 +2563,14 @@ async function openRoom(roomId, password) {
     idbPut(snapshotForIDB());
     setConn('on');
     toast('已进入「' + roomData.name + '」', 'ok');
+    loadActivePage(); // 只加载当前显示的这一页，避免一次性拉全量大图
   });
 }
 
 function goHome() {
   if (currentRoomId) socket.emit('leave-room');
+  pageLoading = false;
+  showLoading(false);
   hideElementMenu();
   currentRoomId = null;
   roomData = null;
@@ -2566,6 +2644,16 @@ function switchPage(id, silent) {
   renderPageBar();
   hideElementMenu();
   if (!silent) toast('已切换到「' + p.name + '」');
+  if (!p.loaded) {
+    // 未加载的页面按需拉取内容
+    pageLoading = true;
+    showLoading(true);
+    loadPageContent(p.id).then((ok) => {
+      pageLoading = false;
+      showLoading(false);
+      if (!ok) toast('无法加载「' + p.name + '」的内容，请检查服务器', 'error');
+    });
+  }
 }
 
 function addPage() {
@@ -2930,6 +3018,17 @@ function base64ToHex(b64) {
 
 async function exportPDF() {
   toast('正在生成 PDF…（共 ' + roomData.pages.length + ' 页）');
+  // 未加载的页面先按需拉取，确保导出不丢内容
+  pageLoading = true;
+  showLoading(true);
+  for (const p of roomData.pages) {
+    if (!p.loaded) {
+      const ok = await loadPageContent(p.id);
+      if (!ok) toast('页面「' + p.name + '」加载失败，导出已跳过', 'error');
+    }
+  }
+  pageLoading = false;
+  showLoading(false);
   await whenImagesReady();
   const pageW = 595.28, pageH = 841.89; // A4（pt）
   const scale = pageW / LOGICAL_W;

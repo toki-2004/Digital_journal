@@ -192,7 +192,7 @@ function newRoomId() {
   return 'room_' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
 }
 
-/** 下发给浏览器的房间数据：剔除密码字段，附带当前元素锁 */
+/** 下发给浏览器的房间数据（轻量版）：只含页面元信息，不含页面内容，避免大房间一次性推流 */
 function sanitizeRoom(room, locks) {
   const lockMap = {};
   if (locks) {
@@ -213,8 +213,8 @@ function sanitizeRoom(room, locks) {
     pages: (room.pages || []).map((p) => ({
       id: p.id,
       name: p.name,
-      images: p.images || [],
-      annotations: p.annotations || [],
+      imageCount: (p.images || []).length,
+      annotationCount: (p.annotations || []).length,
     })),
     history: room.history || [],
     locks: lockMap,
@@ -348,6 +348,22 @@ app.get('/api/rooms/:id/data', (req, res) => {
   room.createdAt = meta.createdAt;
   room.password = meta.password;
   res.json(sanitizeRoom(room, roomLocks.get(req.params.id)));
+});
+
+// 按需加载单个页面的完整内容（图片 + 标注），避免一次性推流全部页面
+app.get('/api/rooms/:id/page/:pageId', (req, res) => {
+  const index = getIndex();
+  const meta = index.rooms[req.params.id];
+  const room = getRoom(req.params.id);
+  if (!meta || !room) return res.status(404).json({ error: '房间不存在' });
+  const page = (room.pages || []).find((p) => p.id === req.params.pageId);
+  if (!page) return res.status(404).json({ error: '页面不存在' });
+  res.json({
+    id: page.id,
+    name: page.name,
+    images: page.images || [],
+    annotations: page.annotations || [],
+  });
 });
 
 /* ---------------------------------------------------------------------------
