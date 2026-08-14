@@ -48,7 +48,6 @@ const HOST = process.env.HOST || '0.0.0.0';
 const DATA_DIR = path.join(__dirname, 'data');
 const INDEX_FILE = path.join(DATA_DIR, 'rooms.json');
 const MAX_BODY = 100 * 1024 * 1024; // 100MB，容纳压缩后的图片 Base64
-const MAX_HISTORY = 1000;           // 每个房间最多保留的操作历史条数
 
 /* ---------------------------------------------------------------------------
  * 工具函数：JSON 读写（原子写入 + 每把钥匙一条串行队列）
@@ -168,6 +167,7 @@ function migrateRoom(room) {
     delete room.images;
     delete room.annotations;
   }
+  delete room.history; // 历史记录模块已移除，元素自带创建人/创建时间
   return room;
 }
 
@@ -216,7 +216,6 @@ function sanitizeRoom(room, locks) {
       imageCount: (p.images || []).length,
       annotationCount: (p.annotations || []).length,
     })),
-    history: room.history || [],
     locks: lockMap,
   };
 }
@@ -270,7 +269,6 @@ app.post('/api/rooms', (req, res) => {
     cover: body.cover || null,
     revision: 0,
     pages: [{ id: 'page_1', name: '第 1 页', images: [], annotations: [] }],
-    history: [],
   };
   getIndex().rooms[id] = {
     id,
@@ -414,74 +412,6 @@ function canEdit(room, user) {
   return room.createdBy === user.id; // 只读房间：仅创建者可编辑
 }
 
-/** 颜色 -> 中文名，用于操作历史描述 */
-const COLOR_NAMES = {
-  '#000000': '黑色', '#333333': '深灰', '#888888': '灰色', '#ffffff': '白色',
-  '#ff0000': '红色', '#ff4d4f': '红色', '#ff5722': '橙色', '#ff9800': '橙色',
-  '#ffc107': '琥珀色', '#ffff00': '黄色', '#ffeb3b': '黄色', '#8bc34a': '浅绿',
-  '#4caf50': '绿色', '#008000': '绿色', '#00bcd4': '青色', '#2196f3': '蓝色',
-  '#0000ff': '蓝色', '#3f51b5': '靛蓝', '#673ab7': '紫色', '#9c27b0': '紫色',
-  '#e91e63': '粉色', '#f06292': '粉色', '#795548': '棕色',
-  '#e34f4f': '红色', '#f08a24': '橙色', '#e0a800': '黄色', '#58a63f': '绿色',
-  '#2f9e9e': '青色', '#3a7bd5': '蓝色', '#7a5cd6': '紫色', '#d6548f': '粉色',
-  '#37352f': '深灰',
-};
-
-function colorName(hex) {
-  const key = String(hex || '').toLowerCase();
-  return COLOR_NAMES[key] || key || '默认色';
-}
-
-/** 由操作类型生成历史记录文本 */
-function describeOp(op, user, pageName) {
-  const who = user.name || '匿名用户';
-  const loc = pageName ? '在' + pageName + ' ' : '';
-  switch (op.type) {
-    case 'add-image':
-      return `${who} ${loc}上传了图片`;
-    case 'add-annotation': {
-      const el = op.element || {};
-      const c = colorName(el.color);
-      if (el.kind === 'pen') return `${who} ${loc}绘制了${c}笔迹`;
-      if (el.kind === 'line') return `${who} ${loc}(${Math.round(el.x1)}, ${Math.round(el.y1)}) 绘制了${c}直线`;
-      if (el.kind === 'arrow') return `${who} ${loc}(${Math.round(el.x1)}, ${Math.round(el.y1)}) 绘制了${c}箭头线段`;
-      if (el.kind === 'rect') return `${who} ${loc}(${Math.round(el.x1)}, ${Math.round(el.y1)}) 绘制了${c}矩形`;
-      if (el.kind === 'circle') return `${who} ${loc}(${Math.round(el.cx)}, ${Math.round(el.cy)}) 绘制了${c}圆形`;
-      if (el.kind === 'text') return `${who} ${loc}添加了文字“${String(el.text || '').slice(0, 20)}”`;
-      return `${who} ${loc}添加了标注`;
-    }
-    case 'transform-image':
-      return `${who} ${loc}移动/旋转了图片`;
-    case 'update-annotation':
-      return `${who} ${loc}移动了标注`;
-    case 'erase': {
-      const n = (op.deletedIds || []).length + (op.modifiedStrokes || []).length;
-      return `${who} ${loc}使用橡皮擦修改了 ${n} 个元素`;
-    }
-    case 'delete-elements':
-      return `${who} ${loc}删除了 ${(op.ids || []).length} 个元素`;
-    case 'duplicate':
-      return `${who} ${loc}复制了 ${(op.elements || []).length} 个元素`;
-    case 'reorder':
-      return `${who} ${loc}调整了元素层级`;
-    case 'clear-annotations':
-      return `${who} ${loc}清空了标注层`;
-    case 'add-page':
-      return `${who} 新增了页面「${op.page ? op.page.name : ''}」`;
-    case 'rename-page':
-      return `${who} 将页面重命名为「${op.name || ''}」`;
-    case 'delete-page':
-      return `${who} 删除了页面「${op.name || ''}」`;
-    default:
-      return `${who} 执行了操作`;
-  }
-}
-
-const ELEMENT_OPS = new Set([
-  'add-image', 'add-annotation', 'update-annotation', 'transform-image',
-  'erase', 'delete-elements', 'duplicate', 'reorder', 'clear-annotations',
-]);
-
 /** 元素创建信息由服务端盖章，保证创建人与创建时间可信 */
 function stampElement(el, user) {
   if (!el || !user) return el;
@@ -505,24 +435,6 @@ function elementZ(el, images, annotations) {
   if (typeof el.z === 'number') return el.z;
   if (el.layer === 'image') return images.indexOf(el);
   return 100000 + annotations.indexOf(el);
-}
-
-function pushHistory(room, op, user) {
-  let pageName = '';
-  if (ELEMENT_OPS.has(op.type)) {
-    const page = pageOf(room, op);
-    if (page) pageName = page.name;
-  }
-  const entry = {
-    ts: Date.now(),
-    time: new Date().toTimeString().slice(0, 8),
-    userId: user.id,
-    userName: user.name,
-    text: describeOp(op, user, pageName),
-  };
-  room.history.push(entry);
-  if (room.history.length > MAX_HISTORY) room.history.splice(0, room.history.length - MAX_HISTORY);
-  return entry;
 }
 
 /** 把持久化操作应用到房间状态；返回错误信息或 null */
@@ -719,7 +631,6 @@ io.on('connection', (socket) => {
     const err = applyOp(room, op, user);
     if (err) return doAck({ ok: false, reason: err });
 
-    const historyEntry = pushHistory(room, op, user);
     room.lastModified = new Date().toISOString();
     room.revision = (room.revision || 0) + 1;
     saveRoom(roomId, room);
@@ -727,12 +638,11 @@ io.on('connection', (socket) => {
 
     socket.to(roomId).emit('op', {
       op,
-      historyEntry,
       revision: room.revision,
       lastModified: room.lastModified,
       by: user,
     });
-    doAck({ ok: true, historyEntry, revision: room.revision, lastModified: room.lastModified });
+    doAck({ ok: true, revision: room.revision, lastModified: room.lastModified });
   });
 
   // 光标位置（节流在客户端做）
@@ -829,7 +739,23 @@ io.on('connection', (socket) => {
 /* ---------------------------------------------------------------------------
  * 启动
  * ------------------------------------------------------------------------- */
+// 历史记录模块已移除：启动时把存量房间文件里的 history 字段清掉，缩小体积
+function stripRoomHistories() {
+  const index = getIndex();
+  for (const id of Object.keys(index.rooms)) {
+    const file = roomFile(id);
+    if (!fs.existsSync(file)) continue;
+    // 直接读原始文件判断（不要走 getRoom，它会在迁移时先删掉 history）
+    const raw = readJSON(file, null);
+    if (raw && raw.history) {
+      delete raw.history;
+      enqueue('room:' + id, () => writeJSONAtomic(file, raw));
+    }
+  }
+}
+
 getIndex(); // 启动时确保索引就绪
+stripRoomHistories();
 server.listen(PORT, HOST, () => {
   console.log('==============================================');
   console.log('  Digital Journal server started');

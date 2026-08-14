@@ -269,36 +269,10 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .sidebar.collapsed { width: 46px; flex: 0 0 46px; }
 .sidebar.collapsed .sidebar-head { justify-content: center; padding: 8px 4px 4px; }
 .sidebar.collapsed .sh-title { display: none; }
-.sidebar.collapsed .tabs { flex-direction: column; border-bottom: none; }
-.sidebar.collapsed .tabs button { padding: 13px 0; font-size: 12px; border-bottom: 2px solid transparent; border-left: 2px solid transparent; }
-.sidebar.collapsed .tabs button.active { border-bottom-color: transparent; border-left-color: var(--ink); }
-.sidebar.collapsed .tab-panel { display: none !important; }
 .footer-github { margin-top: 8px; }
 .footer-github a { color: var(--accent); text-decoration: none; }
 .footer-github a:hover { text-decoration: underline; }
 .footer-github .dot { color: #d0d0cc; }
-.tabs { display: flex; border-bottom: 1px solid var(--line); }
-.tabs button {
-  flex: 1; border: none; background: transparent; padding: 11px 0; font-size: 13px;
-  color: var(--muted); border-bottom: 2px solid transparent; transition: color .12s;
-}
-.tabs button.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
-.tab-panel { flex: 1; overflow-y: auto; min-height: 0; display: none; }
-.tab-panel.active { display: block; }
-
-.timeline { padding: 12px 14px; position: relative; }
-.timeline::before {
-  content: ""; position: absolute; left: 24px; top: 14px; bottom: 14px; width: 2px;
-  background: #efefec; border-radius: 2px;
-}
-.tl-item { position: relative; padding: 0 0 16px 34px; }
-.tl-item::before {
-  content: ""; position: absolute; left: 18px; top: 4px; width: 12px; height: 12px;
-  border-radius: 50%; background: #fff; border: 2.5px solid var(--accent);
-}
-.tl-time { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
-.tl-text { font-size: 12.5px; line-height: 1.55; color: var(--ink); word-break: break-all; }
-.tl-empty { color: var(--muted); font-size: 12px; padding: 30px 18px; text-align: center; }
 
 .member-list { padding: 8px 0; }
 .member-row { display: flex; align-items: center; gap: 10px; padding: 8px 16px; }
@@ -521,19 +495,10 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-head">
-        <span class="sh-title">面板</span>
+        <span class="sh-title">成员</span>
         <button class="icon-btn" id="btnSidebarToggle" title="收起 / 展开面板">»</button>
       </div>
-      <div class="tabs">
-        <button class="active" data-tab="history">历史记录</button>
-        <button data-tab="members">成员</button>
-      </div>
-      <div class="tab-panel active" id="tab-history">
-        <div class="timeline" id="timeline"></div>
-      </div>
-      <div class="tab-panel" id="tab-members">
-        <div class="member-list" id="memberList"></div>
-      </div>
+      <div class="member-list" id="memberList"></div>
     </aside>
   </div>
 </div>
@@ -1014,7 +979,6 @@ function snapshotForIDB() {
       images: p.loaded ? JSON.parse(JSON.stringify(p.images)) : [],
       annotations: p.loaded ? JSON.parse(JSON.stringify(p.annotations)) : [],
     })),
-    history: JSON.parse(JSON.stringify(roomData.history || [])),
   };
 }
 
@@ -1490,7 +1454,6 @@ function sendOp(op, opts) {
       if (res && res.reason) toast(res.reason, 'error');
       return;
     }
-    if (res.historyEntry) pushHistory(res.historyEntry);
     setSaveState('saved');
     idbPut(snapshotForIDB());
   });
@@ -1634,32 +1597,9 @@ socket.on('op', (msg) => {
   if (msg.by && msg.by.userId === me.id) return; // 自己发送的操作已在本地应用
   if (msg.transient) { applyTransientOp(msg.op); return; }
   applyPersistedOp(msg.op);
-  if (msg.historyEntry) pushHistory(msg.historyEntry);
   setSaveState('saved');
   idbPut(snapshotForIDB());
 });
-
-// ---------- 历史记录 ----------
-function pushHistory(entry) {
-  if (!roomData) return;
-  roomData.history = roomData.history || [];
-  roomData.history.push(entry);
-  if (roomData.history.length > 1000) roomData.history.splice(0, roomData.history.length - 1000);
-  renderTimeline();
-}
-
-function renderTimeline() {
-  const tl = $('#timeline');
-  if (!roomData || !roomData.history.length) {
-    tl.innerHTML = '<div class="tl-empty">暂无操作记录<br>绘制、上传图片等操作会显示在这里</div>';
-    return;
-  }
-  // 最新的记录显示在最上方
-  tl.innerHTML = roomData.history.slice().reverse().map((h) =>
-    '<div class="tl-item"><div class="tl-text">[' + esc(h.time) + '] ' + esc(h.text) + '</div></div>'
-  ).join('');
-  tl.scrollTop = 0;
-}
 
 // ---------- 成员与光标 ----------
 function renderMembers() {
@@ -2433,7 +2373,6 @@ function applyServerData(data) {
     lastModified: data.lastModified,
     revision: data.revision || 0,
     pages,
-    history: data.history || [],
   };
   const want = data.activePageId || pages[0].id;
   activePage = pages.find((p) => p.id === want) || pages[0];
@@ -2457,7 +2396,6 @@ function applyServerData(data) {
   }
   $('#roomName').textContent = roomData.name;
   updatePermUI();
-  renderTimeline();
   renderMembers();
   updateInspector();
   renderPageBar();
@@ -2557,7 +2495,6 @@ async function openRoom(roomId, password) {
   roomData = null;
   activePage = null;
   activePageId = null;
-  renderTimeline();
   renderMembers();
   updateInspector();
   $('#homeView').classList.add('hidden');
@@ -2906,16 +2843,6 @@ function bindUI() {
   const savedSidebar = localStorage.getItem('dj_sidebar_collapsed');
   applySidebarCollapsed(savedSidebar ? savedSidebar === '1' : window.innerWidth < 768);
   $('#btnSidebarToggle').onclick = () => applySidebarCollapsed(!sidebar.classList.contains('collapsed'));
-
-  for (const tabBtn of document.querySelectorAll('.tabs button')) {
-    tabBtn.onclick = () => {
-      if (sidebar.classList.contains('collapsed')) applySidebarCollapsed(false);
-      for (const b of document.querySelectorAll('.tabs button')) b.classList.remove('active');
-      tabBtn.classList.add('active');
-      $('#tab-history').classList.toggle('active', tabBtn.dataset.tab === 'history');
-      $('#tab-members').classList.toggle('active', tabBtn.dataset.tab === 'members');
-    };
-  }
 
   document.addEventListener('keydown', (e) => {
     if (!$('#modalRoot').classList.contains('hidden')) return;
