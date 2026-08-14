@@ -4,6 +4,9 @@ node_modules/
 # 本地运行数据（手账内容，不上传）
 data/
 
+# 个人提示词（非项目代码）
+require.md
+
 # 运行日志 / PID
 server.log
 server-error.log
