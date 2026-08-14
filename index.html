@@ -969,6 +969,7 @@ function setupCanvas() {
 }
 
 function resizeCanvas() {
+  if (!canvasWrap || !canvasEl) return; // 画布尚未初始化时安全跳过
   const area = $('.canvas-area');
   const aw = area.clientWidth;
   const ah = area.clientHeight;
@@ -980,6 +981,7 @@ function resizeCanvas() {
 
 /** 根据 fitScale * zoom 与 pan 重新摆放画布 */
 function layoutCanvas() {
+  if (!canvasWrap || !canvasEl) return;
   viewScale = fitScale * zoom;
   const wrapW = canvasWrap.clientWidth || LOGICAL_W;
   const wrapH = canvasWrap.clientHeight || LOGICAL_H;
