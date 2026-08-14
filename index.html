@@ -195,6 +195,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
   background: var(--card); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: var(--shadow); display: flex; align-items: center; gap: 2px;
   padding: 4px 6px; z-index: 20; white-space: nowrap;
+  max-width: calc(100% - 16px); flex-wrap: wrap; justify-content: center;
 }
 .float-inspector .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
 .float-inspector .rot-hint { font-size: 11px; color: var(--muted); padding: 0 4px; white-space: nowrap; }
@@ -356,6 +357,21 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: #d4d4d0; border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-thumb:hover { background-color: #bdbdb8; }
+
+/* ---------- 移动端适配 ---------- */
+@media (max-width: 768px) {
+  .canvas-area { padding: 8px; }
+  .toolbar { width: 48px; flex: 0 0 48px; padding: 8px 4px; }
+  .tool-btn { width: 40px; }
+  .sidebar { width: 220px; flex: 0 0 220px; }
+  .sidebar.collapsed { width: 40px; flex: 0 0 40px; }
+  .topbar-right .save-state, .topbar-right .member-count { display: none; }
+  .room-title #roomName { max-width: 130px; }
+  .home-header { padding: 20px 14px 12px; }
+  .room-grid { padding: 0 14px 30px; }
+  .page-bar { bottom: 10px; }
+  .zoom-pill { right: 12px; bottom: 12px; }
+}
 </style>
 </head>
 <body>
@@ -2634,7 +2650,9 @@ function bindUI() {
     localStorage.setItem('dj_sidebar_collapsed', collapsed ? '1' : '0');
     resizeCanvas();
   };
-  applySidebarCollapsed(localStorage.getItem('dj_sidebar_collapsed') === '1');
+  // 手机端首次使用默认收起侧栏，给画布留出空间；用户手动切换后记住选择
+  const savedSidebar = localStorage.getItem('dj_sidebar_collapsed');
+  applySidebarCollapsed(savedSidebar ? savedSidebar === '1' : window.innerWidth < 768);
   $('#btnSidebarToggle').onclick = () => applySidebarCollapsed(!sidebar.classList.contains('collapsed'));
 
   for (const tabBtn of document.querySelectorAll('.tabs button')) {
