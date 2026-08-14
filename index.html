@@ -1,0 +1,2693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>拾光手账 · 实时协同电子手账</title>
+<style>
+/* ==========================================================================
+   拾光手账 - 前端样式（无第三方依赖，系统字体，Notion 风格）
+   ========================================================================== */
+:root {
+  --bg: #f7f7f5;
+  --card: #ffffff;
+  --ink: #37352f;
+  --muted: #9b9a97;
+  --line: #e9e9e7;
+  --accent: #2f6feb;
+  --accent-soft: #eaf1fe;
+  --danger: #e5484d;
+  --ok: #3aa76d;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(15,15,15,.08), 0 4px 16px rgba(15,15,15,.05);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+.hidden { display: none !important; }
+button { font-family: inherit; cursor: pointer; }
+input, select, textarea { font-family: inherit; font-size: 14px; }
+
+/* ---------- 通用按钮 ---------- */
+.btn {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.btn:hover { background: #f3f3f2; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: #245cd0; }
+.btn.danger { color: var(--danger); border-color: #f2c6c8; }
+.btn.danger:hover { background: #fdf0f0; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--ink); }
+.btn.ghost:hover { background: rgba(0,0,0,.06); }
+.icon-btn {
+  border: none; background: transparent; color: var(--ink);
+  width: 30px; height: 30px; border-radius: 7px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 16px; transition: background .15s;
+}
+.icon-btn:hover { background: rgba(0,0,0,.07); }
+
+/* ---------- 首页：房间列表 ---------- */
+#homeView { min-height: 100vh; }
+.home-header {
+  max-width: 1060px; margin: 0 auto; padding: 34px 24px 18px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-logo {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, #7aa2f7, #5b6ee1);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 20px; box-shadow: var(--shadow);
+}
+.brand h1 { font-size: 19px; font-weight: 600; letter-spacing: .5px; }
+.home-header .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.room-grid {
+  max-width: 1060px; margin: 8px auto 40px; padding: 0 24px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(225px, 1fr)); gap: 18px;
+}
+.room-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  overflow: hidden; cursor: pointer; box-shadow: var(--shadow);
+  transition: transform .15s, box-shadow .15s; position: relative;
+}
+.room-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(15,15,15,.1), 0 12px 28px rgba(15,15,15,.08); }
+.room-cover { height: 118px; background: linear-gradient(135deg, #eef2ff, #f7f0ff); position: relative; }
+.room-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cover-placeholder {
+  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+  font-size: 42px; color: rgba(255,255,255,.92); font-weight: 600;
+}
+.room-badges { position: absolute; top: 8px; right: 8px; display: flex; gap: 6px; }
+.badge {
+  background: rgba(0,0,0,.55); color: #fff; font-size: 11px;
+  padding: 2px 7px; border-radius: 20px; backdrop-filter: blur(2px);
+}
+.room-meta { padding: 12px 14px 14px; }
+.room-name { font-size: 15px; font-weight: 600; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-time { color: var(--muted); font-size: 12px; }
+.room-actions {
+  position: absolute; top: 8px; left: 8px; display: none; gap: 4px;
+}
+.room-card:hover .room-actions { display: flex; }
+.room-actions .icon-btn { background: rgba(255,255,255,.92); box-shadow: 0 1px 4px rgba(0,0,0,.18); width: 26px; height: 26px; font-size: 13px; }
+.room-actions .icon-btn.del:hover { background: #fdecec; color: var(--danger); }
+.empty-tip {
+  grid-column: 1 / -1; text-align: center; color: var(--muted);
+  padding: 70px 20px; border: 1.5px dashed #d8d8d4; border-radius: var(--radius);
+}
+.empty-tip .big { font-size: 40px; margin-bottom: 10px; }
+.home-footer { text-align: center; color: var(--muted); font-size: 12px; padding: 10px 20px 34px; }
+
+/* ---------- 编辑器布局 ---------- */
+#editorView { display: flex; flex-direction: column; height: 100vh; }
+.topbar {
+  height: 50px; flex: 0 0 50px; background: var(--card);
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+}
+.room-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.room-title #roomName { font-weight: 600; font-size: 15px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.perm-badge { font-size: 11px; color: var(--accent); background: var(--accent-soft); border-radius: 20px; padding: 2px 8px; white-space: nowrap; }
+.perm-badge.ro { color: #8a6d1c; background: #fbf3d9; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.save-state { color: var(--muted); font-size: 12px; }
+.save-state.saving { color: #c47f17; }
+.status { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.status i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.status.on i { background: var(--ok); }
+.status.off i { background: var(--danger); }
+.member-count { font-size: 12px; color: var(--muted); }
+
+.editor-body { flex: 1; display: flex; min-height: 0; }
+
+/* ---------- 左侧工具栏 ---------- */
+.toolbar {
+  width: 58px; flex: 0 0 58px; background: var(--card);
+  border-right: 1px solid var(--line); padding: 10px 7px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px; overflow-y: auto;
+}
+.tool-btn {
+  width: 44px; height: 40px; border: none; background: transparent; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; color: var(--ink);
+  position: relative; transition: background .12s;
+}
+.tool-btn svg { width: 20px; height: 20px; }
+.tool-btn:hover { background: #f0f0ee; }
+.tool-btn.active { background: var(--accent-soft); color: var(--accent); }
+.tool-btn:disabled { opacity: .35; cursor: not-allowed; }
+.tool-btn .kbd {
+  position: absolute; right: 3px; bottom: 1px; font-size: 8px; color: var(--muted);
+  background: #f0f0ee; border-radius: 3px; padding: 0 2px; line-height: 11px;
+}
+.tool-divider { width: 32px; height: 1px; background: var(--line); margin: 7px 0; }
+.tool-settings { display: flex; flex-direction: column; align-items: center; gap: 7px; padding-top: 6px; }
+.swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+.swatch {
+  width: 17px; height: 17px; border-radius: 50%; border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.14); cursor: pointer; padding: 0;
+}
+.swatch.active { box-shadow: 0 0 0 2px var(--accent); }
+.range-row { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.range-row label { font-size: 10px; color: var(--muted); }
+.range-row input[type=range] { width: 42px; accent-color: var(--accent); }
+
+/* ---------- 画布区域 ---------- */
+.canvas-area {
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
+  padding: 18px; position: relative; overflow: hidden;
+}
+.canvas-wrap {
+  position: relative; box-shadow: var(--shadow);
+  border: 1px solid var(--line); border-radius: 4px; overflow: hidden;
+  background: #ececea; touch-action: none;
+}
+#board { display: block; position: absolute; left: 0; top: 0; touch-action: none; }
+#cursorLayer { position: absolute; inset: 0; pointer-events: none; }
+.remote-cursor { position: absolute; display: flex; align-items: center; gap: 4px; transform: translate(-1px, -1px); }
+.remote-cursor .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.remote-cursor .nm {
+  font-size: 11px; color: #fff; padding: 1px 6px; border-radius: 8px;
+  white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+}
+.text-edit {
+  position: absolute; border: 2px solid var(--accent); border-radius: 4px;
+  background: rgba(255,255,255,.96); padding: 3px 6px; font-family: inherit;
+  outline: none; min-width: 80px; resize: none; overflow: hidden; z-index: 30;
+  box-shadow: 0 2px 10px rgba(0,0,0,.18); white-space: pre;
+}
+.float-inspector {
+  position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%);
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow); display: flex; align-items: center; gap: 2px;
+  padding: 4px 6px; z-index: 20; white-space: nowrap;
+}
+.float-inspector .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+.float-inspector .lock-note { font-size: 11px; color: var(--danger); padding: 0 6px; }
+.readonly-banner {
+  position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
+  background: #fbf3d9; color: #8a6d1c; font-size: 12px; border-radius: 20px;
+  padding: 4px 12px; z-index: 15; box-shadow: 0 1px 4px rgba(0,0,0,.12);
+}
+
+/* ---------- 页面栏与缩放控件 ---------- */
+.page-bar {
+  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; max-width: 78%;
+  background: rgba(255,255,255,.95); border: 1px solid var(--line);
+  border-radius: 10px; box-shadow: var(--shadow); padding: 4px; z-index: 18;
+  backdrop-filter: blur(3px);
+}
+.page-tabs { display: flex; gap: 3px; overflow-x: auto; max-width: 100%; }
+.page-tab {
+  display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 7px;
+  font-size: 12.5px; color: var(--ink); cursor: pointer; white-space: nowrap;
+  border: 1px solid transparent; user-select: none;
+}
+.page-tab:hover { background: #f0f0ee; }
+.page-tab.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.page-tab .pt-del { color: var(--muted); font-size: 13px; line-height: 1; padding: 1px 3px; border-radius: 4px; }
+.page-tab .pt-del:hover { color: var(--danger); background: #fdecec; }
+.page-add { border: none; background: transparent; color: var(--accent); font-size: 17px; padding: 4px 9px; border-radius: 7px; }
+.page-add:hover { background: var(--accent-soft); }
+.page-add:disabled { opacity: .35; cursor: not-allowed; }
+.zoom-pill {
+  position: absolute; right: 22px; bottom: 16px; z-index: 18;
+  display: flex; align-items: center; gap: 2px;
+  background: rgba(255,255,255,.95); border: 1px solid var(--line);
+  border-radius: 10px; box-shadow: var(--shadow); padding: 3px 4px;
+}
+.zoom-pill .zp-btn { border: none; background: transparent; width: 26px; height: 26px; border-radius: 6px; font-size: 15px; color: var(--ink); }
+.zoom-pill .zp-btn:hover { background: #f0f0ee; }
+.zoom-pill .zp-pct { font-size: 11.5px; color: var(--muted); min-width: 44px; text-align: center; user-select: none; }
+.zoom-pill .zp-fit { border: none; background: transparent; font-size: 11px; color: var(--accent); padding: 4px 7px; border-radius: 6px; }
+.zoom-pill .zp-fit:hover { background: var(--accent-soft); }
+
+/* ---------- 右侧边栏 ---------- */
+.sidebar {
+  width: 292px; flex: 0 0 292px; background: var(--card);
+  border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0;
+  transition: width .18s ease, flex-basis .18s ease;
+}
+.sidebar-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px 4px 14px;
+}
+.sh-title { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 1px; }
+.sidebar.collapsed { width: 46px; flex: 0 0 46px; }
+.sidebar.collapsed .sidebar-head { justify-content: center; padding: 8px 4px 4px; }
+.sidebar.collapsed .sh-title { display: none; }
+.sidebar.collapsed .tabs { flex-direction: column; border-bottom: none; }
+.sidebar.collapsed .tabs button { padding: 13px 0; font-size: 12px; border-bottom: 2px solid transparent; border-left: 2px solid transparent; }
+.sidebar.collapsed .tabs button.active { border-bottom-color: transparent; border-left-color: var(--ink); }
+.sidebar.collapsed .tab-panel { display: none !important; }
+.footer-github { margin-top: 8px; }
+.footer-github a { color: var(--accent); text-decoration: none; }
+.footer-github a:hover { text-decoration: underline; }
+.footer-github .dot { color: #d0d0cc; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tabs button {
+  flex: 1; border: none; background: transparent; padding: 11px 0; font-size: 13px;
+  color: var(--muted); border-bottom: 2px solid transparent; transition: color .12s;
+}
+.tabs button.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.tab-panel { flex: 1; overflow-y: auto; min-height: 0; display: none; }
+.tab-panel.active { display: block; }
+
+.timeline { padding: 12px 14px; position: relative; }
+.timeline::before {
+  content: ""; position: absolute; left: 24px; top: 14px; bottom: 14px; width: 2px;
+  background: #efefec; border-radius: 2px;
+}
+.tl-item { position: relative; padding: 0 0 16px 34px; }
+.tl-item::before {
+  content: ""; position: absolute; left: 18px; top: 4px; width: 12px; height: 12px;
+  border-radius: 50%; background: #fff; border: 2.5px solid var(--accent);
+}
+.tl-time { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.tl-text { font-size: 12.5px; line-height: 1.55; color: var(--ink); word-break: break-all; }
+.tl-empty { color: var(--muted); font-size: 12px; padding: 30px 18px; text-align: center; }
+
+.member-list { padding: 8px 0; }
+.member-row { display: flex; align-items: center; gap: 10px; padding: 8px 16px; }
+.member-row .avatar {
+  width: 26px; height: 26px; border-radius: 50%; color: #fff; font-size: 12px;
+  display: flex; align-items: center; justify-content: center; flex: 0 0 26px;
+}
+.member-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-row .tag { font-size: 10px; color: var(--muted); background: #f0f0ee; border-radius: 10px; padding: 1px 7px; }
+.member-row .tag.me { color: var(--accent); background: var(--accent-soft); }
+.member-row .tag.admin { color: #9a6b00; background: #fbf3d9; }
+.member-row .cursor-pos { font-size: 11px; color: var(--muted); }
+
+/* ---------- 弹窗与提示 ---------- */
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(15,15,15,.42); z-index: 100;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  animation: fadeIn .14s ease;
+}
+.modal-card {
+  background: var(--card); border-radius: 14px; width: 100%; max-width: 430px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.22); animation: popIn .16s ease; overflow: hidden;
+}
+.modal-card.wide { max-width: 520px; }
+.modal-head { padding: 18px 20px 0; font-size: 16px; font-weight: 600; }
+.modal-body { padding: 16px 20px 6px; font-size: 13.5px; line-height: 1.7; }
+.modal-body .field { margin-bottom: 14px; }
+.modal-body label.f-label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 5px; }
+.modal-body input[type=text], .modal-body input[type=password], .modal-body textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; outline: none;
+  transition: border-color .12s;
+}
+.modal-body input:focus, .modal-body textarea:focus { border-color: var(--accent); }
+.modal-body .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.radio-row { display: flex; gap: 18px; }
+.radio-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; }
+.radio-row input { accent-color: var(--accent); }
+.cover-picker { display: flex; align-items: center; gap: 12px; }
+.cover-picker img, .cover-picker .no-cover {
+  width: 72px; height: 48px; border-radius: 8px; object-fit: cover;
+  border: 1px solid var(--line); background: #f0f0ee; flex: 0 0 72px;
+  display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px;
+}
+.modal-actions { padding: 10px 20px 18px; display: flex; justify-content: flex-end; gap: 8px; }
+.modal-actions .spacer { flex: 1; }
+.room-info-box {
+  background: #f8f8f7; border: 1px solid var(--line); border-radius: 8px;
+  padding: 9px 12px; margin-bottom: 14px; font-size: 12.5px; color: var(--muted);
+}
+
+#toastRoot { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+.toast {
+  background: #2f2e2b; color: #fff; font-size: 13px; padding: 9px 18px; border-radius: 22px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.28); animation: popIn .18s ease; max-width: 70vw;
+}
+.toast.error { background: var(--danger); }
+.toast.ok { background: var(--ok); }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.96) translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ---------- 滚动条 ---------- */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: #d4d4d0; border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background-color: #bdbdb8; }
+</style>
+</head>
+<body>
+
+<!-- ================= 首页 ================= -->
+<div id="homeView">
+  <header class="home-header">
+    <div>
+      <div class="brand">
+        <div class="brand-logo">✎</div>
+        <div>
+          <h1>拾光手账</h1>
+          <div class="sub">自托管 · 实时协同电子手账</div>
+        </div>
+      </div>
+    </div>
+    <button class="btn primary" id="btnNewRoom">＋ 新建手账本</button>
+  </header>
+  <main class="room-grid" id="roomGrid"></main>
+  <footer class="home-footer">
+    <div>数据保存在服务器 ./data/ 目录下的 JSON 文件 · 浏览器端另有 IndexedDB 本地缓存</div>
+    <div class="footer-github">
+      <a href="https://github.com/toki-2004/Digital_journal" target="_blank" rel="noopener">GitHub：toki-2004/Digital_journal</a>
+    </div>
+  </footer>
+</div>
+
+<!-- ================= 编辑器 ================= -->
+<div id="editorView" class="hidden">
+  <header class="topbar">
+    <button class="icon-btn" id="btnBack" title="返回首页">←</button>
+    <div class="room-title">
+      <span id="roomName">未命名</span>
+      <span class="perm-badge" id="permBadge">可编辑</span>
+    </div>
+    <div class="topbar-right">
+      <span class="save-state" id="saveState">已保存</span>
+      <span class="status" id="connStatus"><i></i><span id="connText">连接中…</span></span>
+      <span class="member-count" id="memberCount">0 人在线</span>
+      <button class="btn ghost" id="btnExport">导出</button>
+      <button class="btn ghost" id="btnSettings">设置</button>
+    </div>
+  </header>
+
+  <div class="editor-body">
+    <aside class="toolbar" id="toolbar">
+      <button class="tool-btn active" data-tool="select" title="选择 / 移动 (V)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 8-6.2 1.6L9.5 18 5 3z"/></svg>
+        <span class="kbd">V</span>
+      </button>
+      <button class="tool-btn" data-tool="pen" title="画笔 (P)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4L8 20l-5 1 1-5L17 3z"/></svg>
+        <span class="kbd">P</span>
+      </button>
+      <button class="tool-btn" data-tool="eraser" title="橡皮擦 (E，仅擦除标注)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20l-3-3 9-9 6 6-6 6H7z"/><path d="M13 8l6 6"/></svg>
+        <span class="kbd">E</span>
+      </button>
+      <div class="tool-divider"></div>
+      <button class="tool-btn" data-tool="line" title="直线">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20L20 4"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="rect" title="矩形">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="circle" title="圆形">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="arrow" title="箭头线段">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L19 5"/><path d="M10 5h9v9"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="text" title="文字（单击放置 / 双击画布）">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V5h16v2M12 5v14M9 19h6"/></svg>
+      </button>
+      <div class="tool-divider"></div>
+      <button class="tool-btn" id="btnUploadImage" title="上传图片">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M5 19l5-5 3 3 4-4 3 3"/></svg>
+      </button>
+      <button class="tool-btn" id="btnClearAnno" title="清空标注层">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+      </button>
+      <input type="file" id="imageInput" accept="image/*" class="hidden">
+
+      <div class="tool-divider"></div>
+      <div class="tool-settings">
+        <div class="swatches" id="swatches"></div>
+        <div class="range-row">
+          <label>粗细</label>
+          <input type="range" id="strokeWidth" min="1" max="24" value="3">
+        </div>
+        <div class="range-row">
+          <label>字号</label>
+          <input type="range" id="fontSize" min="12" max="72" value="26">
+        </div>
+      </div>
+    </aside>
+
+    <div class="canvas-area">
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="board"></canvas>
+        <div id="cursorLayer"></div>
+        <div class="float-inspector hidden" id="floatInspector">
+          <button class="icon-btn" id="inspDelete" title="删除 (Delete)">🗑</button>
+          <button class="icon-btn" id="inspDuplicate" title="复制 (Ctrl+C / Ctrl+V)">⧉</button>
+          <div class="sep"></div>
+          <button class="icon-btn" id="inspFront" title="置顶">↑</button>
+          <button class="icon-btn" id="inspBack" title="置底">↓</button>
+          <div class="sep"></div>
+          <span class="lock-note hidden" id="inspLockNote"></span>
+        </div>
+      </div>
+      <div class="readonly-banner hidden" id="readonlyBanner">只读模式：当前仅创建者可编辑</div>
+      <div class="page-bar" id="pageBar">
+        <div class="page-tabs" id="pageTabs"></div>
+        <button class="page-add" id="btnAddPage" title="新增页面">＋</button>
+      </div>
+      <div class="zoom-pill" id="zoomPill">
+        <button class="zp-btn" id="zoomOut" title="缩小">−</button>
+        <span class="zp-pct" id="zoomPct">100%</span>
+        <button class="zp-btn" id="zoomIn" title="放大">＋</button>
+        <button class="zp-fit" id="zoomFit" title="适应窗口">适应</button>
+      </div>
+    </div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <span class="sh-title">面板</span>
+        <button class="icon-btn" id="btnSidebarToggle" title="收起 / 展开面板">»</button>
+      </div>
+      <div class="tabs">
+        <button class="active" data-tab="history">历史记录</button>
+        <button data-tab="members">成员</button>
+      </div>
+      <div class="tab-panel active" id="tab-history">
+        <div class="timeline" id="timeline"></div>
+      </div>
+      <div class="tab-panel" id="tab-members">
+        <div class="member-list" id="memberList"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ================= 弹窗 / 提示 ================= -->
+<div id="modalRoot" class="hidden">
+  <div class="modal-mask">
+    <div class="modal-card" id="modalCard">
+      <div class="modal-head" id="modalTitle"></div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-actions" id="modalActions"></div>
+    </div>
+  </div>
+</div>
+<div id="toastRoot"></div>
+
+<!-- Socket.io 客户端（由 server.js 自动提供） -->
+<script src="/socket.io/socket.io.js"></script>
+<script>
+'use strict';
+/* ==========================================================================
+   前端核心：工具函数、用户身份、IndexedDB、弹窗、Socket、首页
+   ========================================================================== */
+
+// ---------- 基础常量与工具 ----------
+const LOGICAL_W = 1400;   // 画布逻辑宽度（px）
+const LOGICAL_H = 1980;   // 画布逻辑高度（px，A4 比例）
+const DB_NAME = 'digital-journal';
+
+const $ = (sel, el = document) => el.querySelector(sel);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const uid = () => 'e_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function relTime(iso) {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  const diff = Date.now() - t;
+  if (diff < 60e3) return '刚刚';
+  if (diff < 3600e3) return Math.floor(diff / 60e3) + ' 分钟前';
+  if (diff < 86400e3) return Math.floor(diff / 3600e3) + ' 小时前';
+  if (diff < 7 * 86400e3) return Math.floor(diff / 86400e3) + ' 天前';
+  return new Date(iso).toLocaleDateString('zh-CN');
+}
+
+function fetchJSON(url, options, timeout = 12000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeout);
+  return fetch(url, Object.assign({
+    headers: { 'Content-Type': 'application/json' },
+    signal: ctrl.signal,
+  }, options))
+    .then(async (res) => {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || ('请求失败（HTTP ' + res.status + '）'));
+      }
+      return res.json();
+    })
+    .finally(() => clearTimeout(t));
+}
+
+// ---------- 用户身份（localStorage） ----------
+const USER_COLORS = ['#e34f4f', '#f08a24', '#e0a800', '#58a63f', '#2f9e9e', '#3a7bd5', '#7a5cd6', '#d6548f', '#c74e4e', '#4c7dd8'];
+const NAME_A = ['柠', '云', '星', '月', '林', '海', '风', '雪', '橘', '莓', '桃', '溪', '柚', '芋', '苏', '雾'];
+const NAME_B = ['猫', '狐', '兔', '鹿', '熊', '鲸', '雀', '鸭', '羊', '犬', '鹰', '蝶'];
+
+function loadIdentity() {
+  let u = null;
+  try { u = JSON.parse(localStorage.getItem('dj_user')); } catch (e) { /* 忽略 */ }
+  if (!u || !u.id) {
+    u = {
+      id: 'u_' + Math.random().toString(36).slice(2, 10),
+      name: NAME_A[Math.floor(Math.random() * NAME_A.length)] + NAME_B[Math.floor(Math.random() * NAME_B.length)] + '#' + Math.random().toString(16).slice(2, 4),
+      color: USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)],
+    };
+    localStorage.setItem('dj_user', JSON.stringify(u));
+  }
+  return u;
+}
+const me = loadIdentity();
+
+// ---------- IndexedDB 本地缓存 ----------
+let idbReady = null;
+function initIDB() {
+  if (idbReady) return idbReady;
+  idbReady = new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) { resolve(null); return; }
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('rooms', { keyPath: 'id' });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return idbReady;
+}
+
+function idbPut(roomData) {
+  return initIDB().then((db) => new Promise((resolve) => {
+    if (!db) return resolve();
+    const tx = db.transaction('rooms', 'readwrite');
+    tx.objectStore('rooms').put(roomData);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+  }));
+}
+
+function idbGet(id) {
+  return initIDB().then((db) => new Promise((resolve) => {
+    if (!db) return resolve(null);
+    const req = db.transaction('rooms').objectStore('rooms').get(id);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => resolve(null);
+  }));
+}
+
+// ---------- 弹窗 ----------
+function openModal({ title, body, buttons, wide }) {
+  return new Promise((resolve) => {
+    const root = $('#modalRoot');
+    root.classList.remove('hidden');
+    $('#modalTitle').textContent = title;
+    $('#modalBody').innerHTML = body;
+    $('#modalCard').classList.toggle('wide', !!wide);
+    const actions = $('#modalActions');
+    actions.innerHTML = '';
+
+    const closeModal = (val) => {
+      root.classList.add('hidden');
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') closeModal(false); };
+    document.addEventListener('keydown', onKey);
+    root.querySelector('.modal-mask').onclick = (e) => {
+      if (e.target.classList.contains('modal-mask')) closeModal(false);
+    };
+
+    if (buttons) {
+      for (const b of buttons) {
+        const el = document.createElement('button');
+        el.className = 'btn' + (b.primary ? ' primary' : '') + (b.danger ? ' danger' : '') + (b.ghost ? ' ghost' : '');
+        el.textContent = b.label;
+        el.onclick = () => closeModal(b.value);
+        actions.appendChild(el);
+      }
+    }
+  });
+}
+
+// ---------- Toast 提示 ----------
+function toast(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  $('#toastRoot').appendChild(el);
+  setTimeout(() => {
+    el.style.transition = 'opacity .35s';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 400);
+  }, 2400);
+}
+
+// ---------- 图片压缩（长边不超过 maxSide，避免 JSON 文件膨胀） ----------
+function compressImage(file, maxSide = 1600, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      const s = Math.min(1, maxSide / Math.max(w, h));
+      w = Math.max(1, Math.round(w * s));
+      h = Math.max(1, Math.round(h * s));
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      const isPng = /png|gif|webp/i.test(file.type);
+      resolve(isPng ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片读取失败')); };
+    img.src = url;
+  });
+}
+
+// ---------- Socket.io 连接与全局事件 ----------
+const socket = io();
+let members = [];                 // 在线成员（服务端下发）
+const memberCursors = new Map();  // userId -> {x,y,name,color}
+let locks = new Map();            // elementId -> lock
+let currentRoomId = null;
+let viewScale = 1;
+
+socket.on('connect', () => { setConn('on'); });
+socket.on('disconnect', () => { setConn('off'); });
+socket.on('connect_error', () => { setConn('off'); });
+
+socket.on('members', (list) => {
+  members = list || [];
+  // 清掉已不在线成员的光标
+  const ids = new Set(members.map((m) => m.userId));
+  for (const k of Array.from(memberCursors.keys())) if (!ids.has(k)) memberCursors.delete(k);
+  renderMembers();
+});
+
+socket.on('cursor', (p) => {
+  memberCursors.set(p.userId, { x: p.x, y: p.y, name: p.name, color: p.color });
+  renderCursorLayer();
+  renderMembers();
+});
+
+socket.on('element-locked', (p) => {
+  locks.set(p.elementId, p.lock);
+});
+
+socket.on('element-unlocked', (p) => {
+  locks.delete(p.elementId);
+  if (selectedId === p.elementId && !locks.has(p.elementId) && currentAction && currentAction.type === 'move') {
+    // 自己持有的锁被服务器释放（异常情况），结束当前动作
+  }
+});
+
+socket.on('room-settings', (p) => {
+  if (!roomData) return;
+  roomData.name = p.name;
+  roomData.editPermission = p.editPermission;
+  $('#roomName').textContent = p.name;
+  updatePermUI();
+  toast('房间设置已更新');
+});
+
+socket.on('room-deleted', () => {
+  toast('手账本已被创建者删除', 'error');
+  goHome();
+});
+
+// ---------- 连接状态 ----------
+function setConn(state) {
+  const el = $('#connStatus');
+  const txt = $('#connText');
+  el.classList.remove('on', 'off');
+  if (state === 'on') { el.classList.add('on'); txt.textContent = '已连接'; }
+  else if (state === 'off') { el.classList.add('off'); txt.textContent = '已断开'; }
+  else { txt.textContent = '连接中…'; }
+}
+
+// ---------- 首页：房间列表 ----------
+const COVER_GRADIENTS = [
+  'linear-gradient(135deg,#8ea8f5,#b59df0)',
+  'linear-gradient(135deg,#7fd4c1,#6bb5e8)',
+  'linear-gradient(135deg,#f5b37e,#f08aa8)',
+  'linear-gradient(135deg,#a8d67f,#67b99a)',
+  'linear-gradient(135deg,#e8b66b,#e88f6b)',
+  'linear-gradient(135deg,#9aa5f0,#7f8fd8)',
+];
+
+async function loadRooms() {
+  try {
+    const list = await fetchJSON('/api/rooms', {}, 8000);
+    renderRoomGrid(list);
+  } catch (e) {
+    $('#roomGrid').innerHTML = '<div class="empty-tip"><div class="big">⚠️</div>无法连接服务器：' + esc(e.message) + '<br><br>请先运行 <b>node server.js</b></div>';
+  }
+}
+
+function roomGradient(id) {
+  let h = 0;
+  for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return COVER_GRADIENTS[h % COVER_GRADIENTS.length];
+}
+
+function renderRoomGrid(list) {
+  const grid = $('#roomGrid');
+  if (!list.length) {
+    grid.innerHTML = '<div class="empty-tip"><div class="big">📖</div>还没有手账本<br>点击右上角「新建手账本」开始记录</div>';
+    return;
+  }
+  grid.innerHTML = list.map((r) => {
+    const cover = r.cover
+      ? '<img src="' + r.cover + '" alt="封面">'
+      : '<div class="cover-placeholder" style="background:' + roomGradient(r.id) + '">' + esc(r.name.slice(0, 1)) + '</div>';
+    const badges = (r.hasPassword ? '<span class="badge">🔒 密码</span>' : '') + (r.editPermission === 'readonly' ? '<span class="badge">只读</span>' : '');
+    return '<div class="room-card" data-id="' + esc(r.id) + '">'
+      + '<div class="room-actions">'
+      + '<button class="icon-btn" data-act="rename" title="重命名">✎</button>'
+      + '<button class="icon-btn del" data-act="delete" title="删除">🗑</button>'
+      + '</div>'
+      + '<div class="room-cover">' + cover + (badges ? '<div class="room-badges">' + badges + '</div>' : '') + '</div>'
+      + '<div class="room-meta"><div class="room-name">' + esc(r.name) + '</div><div class="room-time">最后编辑：' + relTime(r.lastModified) + '</div></div>'
+      + '</div>';
+  }).join('');
+
+  for (const card of grid.querySelectorAll('.room-card')) {
+    const room = list.find((r) => r.id === card.dataset.id);
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('[data-act]')) return;
+      joinRoom(room);
+    });
+    card.querySelector('[data-act=rename]').onclick = (e) => { e.stopPropagation(); renameRoom(room); };
+    card.querySelector('[data-act=delete]').onclick = (e) => { e.stopPropagation(); deleteRoom(room); };
+  }
+}
+
+async function createRoomFlow() {
+  const form = await (() => {
+    const p = openModal({
+      title: '新建手账本',
+      body: '<div class="field"><label class="f-label">名称</label><input type="text" id="crName" maxlength="40" placeholder="例如：旅行手账"></div>'
+        + '<div class="field"><label class="f-label">访问密码（可选，留空则无需密码）</label><input type="password" id="crPass" placeholder="协作者需要密码才能进入"></div>'
+        + '<div class="field"><label class="f-label">编辑权限</label><div class="radio-row">'
+        + '<label><input type="radio" name="crPerm" value="editable" checked> 可编辑（协作者可共同绘制）</label>'
+        + '<label><input type="radio" name="crPerm" value="readonly"> 只读（仅创建者可编辑）</label>'
+        + '</div></div>'
+        + '<div class="field"><label class="f-label">封面（可选）</label>'
+        + '<div class="cover-picker"><div id="crCover" class="no-cover">封面</div>'
+        + '<div style="display:flex;gap:8px"><button type="button" class="btn" id="crCoverBtn">上传封面</button><button type="button" class="btn ghost" id="crCoverClear">移除</button></div>'
+        + '<input type="file" id="crCoverInput" accept="image/*" class="hidden"></div></div>',
+      buttons: [{ label: '取消', value: false }, { label: '创建', value: true, primary: true }],
+    });
+    return p;
+  })();
+
+  let coverData = null;
+  const input = $('#crCoverInput');
+  const preview = $('#crCover');
+  $('#crCoverBtn').onclick = () => input.click();
+  $('#crCoverClear').onclick = () => { coverData = null; preview.style.background = ''; preview.textContent = '封面'; preview.classList.add('no-cover'); };
+  input.onchange = async () => {
+    const f = input.files[0];
+    if (!f) return;
+    try {
+      coverData = await compressImage(f, 360, 0.8);
+      preview.style.background = 'url(' + coverData + ') center/cover';
+      preview.textContent = '';
+      preview.classList.remove('no-cover');
+    } catch (e) { toast(e.message, 'error'); }
+  };
+
+  const ok = await form;
+  if (!ok) return;
+  const name = $('#crName').value.trim();
+  if (!name) { toast('请填写手账本名称', 'error'); return createRoomFlow(); }
+  const password = $('#crPass').value;
+  const editPermission = document.querySelector('input[name=crPerm]:checked').value;
+  try {
+    await fetchJSON('/api/rooms', {
+      method: 'POST',
+      body: JSON.stringify({ name, password, editPermission, cover: coverData, user: me }),
+    });
+    toast('手账本创建成功', 'ok');
+    loadRooms();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function renameRoom(room) {
+  const p = openModal({
+    title: '重命名手账本',
+    body: '<div class="field"><label class="f-label">名称</label><input type="text" id="rnName" maxlength="40" value="' + esc(room.name) + '"></div>',
+    buttons: [{ label: '取消', value: false }, { label: '保存', value: true, primary: true }],
+  });
+  setTimeout(() => { const el = $('#rnName'); if (el) { el.focus(); el.select(); } }, 40);
+  p.then(async (ok) => {
+    if (!ok) return;
+    const name = $('#rnName').value.trim();
+    if (!name) { toast('名称不能为空', 'error'); return renameRoom(room); }
+    try {
+      await fetchJSON('/api/rooms/' + room.id, { method: 'PATCH', body: JSON.stringify({ name, userId: me.id }) });
+      toast('已重命名', 'ok');
+      loadRooms();
+    } catch (e) { toast(e.message, 'error'); }
+  });
+}
+
+function deleteRoom(room) {
+  const p = openModal({
+    title: '删除手账本',
+    body: '<p>确定删除「' + esc(room.name) + '」吗？<br>该房间的全部画布数据与操作历史将一并删除，<b>无法恢复</b>。</p>',
+    buttons: [{ label: '取消', value: false }, { label: '删除', value: true, danger: true }],
+  });
+  p.then(async (ok) => {
+    if (!ok) return;
+    try {
+      await fetchJSON('/api/rooms/' + room.id, { method: 'DELETE', body: JSON.stringify({ userId: me.id }) });
+      toast('已删除手账本', 'ok');
+      loadRooms();
+    } catch (e) { toast(e.message, 'error'); }
+  });
+}
+
+async function joinRoom(room) {
+  let password = '';
+  if (room.hasPassword) {
+    const p = openModal({
+      title: '进入手账本',
+      body: '<div class="room-info-box">房间「' + esc(room.name) + '」需要访问密码' + (room.editPermission === 'readonly' ? '（只读，仅创建者可编辑）' : '') + '</div>'
+        + '<div class="field"><input type="password" id="joinPass" placeholder="输入访问密码" autocomplete="off"></div>',
+      buttons: [{ label: '取消', value: false }, { label: '进入', value: true, primary: true }],
+    });
+    setTimeout(() => { const el = $('#joinPass'); if (el) el.focus(); }, 40);
+    const ok = await p;
+    if (!ok) return;
+    password = $('#joinPass').value;
+  }
+  openRoom(room.id, password);
+}
+
+/* ==========================================================================
+   编辑器：画布渲染、绘图工具、实时同步、乐观锁、历史记录
+   ========================================================================== */
+
+// ---------- 状态 ----------
+let roomData = null;
+let activePage = null;
+let activePageId = null;
+let canvasEl = null;
+let ctx2d = null;
+let canvasWrap = null;
+let currentTool = 'select';
+let toolColor = '#e34f4f';
+let selectedId = null;
+let hoveredId = null;
+let currentAction = null;
+let isAdmin = false;
+let canEdit = true;
+let joinPassword = '';
+let copyBuffer = null;
+let lastCursorSent = 0;
+let rafId = null;
+let fitScale = 1;      // 页面完整适应窗口时的缩放
+let zoom = 1;          // 用户缩放倍率（1 = 适应窗口）
+let panX = 0, panY = 0; // 平移偏移（CSS 像素）
+const activePointers = new Map();
+let pinch = null;
+let spaceDown = false;
+const imgCache = new Map(); // imageId -> HTMLImageElement
+
+function findElement(id) {
+  if (!roomData) return null;
+  return roomData.images.find((e) => e.id === id) || roomData.annotations.find((e) => e.id === id) || null;
+}
+
+function snapshotForIDB() {
+  if (!roomData) return null;
+  return {
+    id: roomData.id,
+    name: roomData.name,
+    editPermission: roomData.editPermission,
+    createdBy: roomData.createdBy,
+    createdAt: roomData.createdAt,
+    lastModified: roomData.lastModified,
+    revision: roomData.revision || 0,
+    activePageId,
+    pages: roomData.pages.map((p) => ({
+      id: p.id,
+      name: p.name,
+      images: JSON.parse(JSON.stringify(p.images)),
+      annotations: JSON.parse(JSON.stringify(p.annotations)),
+    })),
+    history: JSON.parse(JSON.stringify(roomData.history || [])),
+  };
+}
+
+// ---------- 画布初始化 ----------
+function setupCanvas() {
+  canvasEl = $('#board');
+  ctx2d = canvasEl.getContext('2d');
+  canvasWrap = $('#canvasWrap');
+  canvasEl.width = LOGICAL_W * (window.devicePixelRatio || 1);
+  canvasEl.height = LOGICAL_H * (window.devicePixelRatio || 1);
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  // 编辑器从隐藏变为可见、或布局尺寸变化时，自动重新计算画布大小
+  const area = $('.canvas-area');
+  if (typeof ResizeObserver !== 'undefined' && area) {
+    new ResizeObserver(() => resizeCanvas()).observe(area);
+  }
+  bindCanvasEvents();
+  rafId = requestAnimationFrame(loop);
+}
+
+function resizeCanvas() {
+  const area = $('.canvas-area');
+  const aw = area.clientWidth;
+  const ah = area.clientHeight;
+  canvasWrap.style.width = aw + 'px';
+  canvasWrap.style.height = ah + 'px';
+  fitScale = clamp(Math.min(aw / LOGICAL_W, ah / LOGICAL_H), 0.1, 1);
+  layoutCanvas();
+}
+
+/** 根据 fitScale * zoom 与 pan 重新摆放画布 */
+function layoutCanvas() {
+  viewScale = fitScale * zoom;
+  const wrapW = canvasWrap.clientWidth || LOGICAL_W;
+  const wrapH = canvasWrap.clientHeight || LOGICAL_H;
+  const cw = LOGICAL_W * viewScale;
+  const ch = LOGICAL_H * viewScale;
+  canvasEl.style.width = cw + 'px';
+  canvasEl.style.height = ch + 'px';
+  canvasEl.style.left = Math.round((wrapW - cw) / 2 + panX) + 'px';
+  canvasEl.style.top = Math.round((wrapH - ch) / 2 + panY) + 'px';
+  const te = $('.text-edit');
+  if (te && te.dataset.lx != null) {
+    te.style.left = (canvasEl.offsetLeft + Number(te.dataset.lx) * viewScale) + 'px';
+    te.style.top = (canvasEl.offsetTop + Number(te.dataset.ly) * viewScale) + 'px';
+    te.style.fontSize = (Number(te.dataset.size) || 26) * viewScale + 'px';
+    te.style.width = Math.max(120, (Number(te.dataset.size) || 26) * 4 * viewScale) + 'px';
+  }
+  renderCursorLayer();
+}
+
+/** 画布逻辑坐标 -> 相对画布容器的屏幕坐标 */
+function logicalToScreen(p) {
+  return { x: canvasEl.offsetLeft + p.x * viewScale, y: canvasEl.offsetTop + p.y * viewScale };
+}
+
+function updateZoomUI() {
+  $('#zoomPct').textContent = Math.round(zoom * 100) + '%';
+}
+
+function resetZoom() {
+  zoom = 1;
+  panX = 0;
+  panY = 0;
+  layoutCanvas();
+  updateZoomUI();
+}
+
+/** 以屏幕上某点为锚点缩放（滚轮 / 按钮） */
+function zoomAt(clientX, clientY, factor) {
+  const before = toLogical({ clientX, clientY });
+  const newZoom = clamp(zoom * factor, 0.2, 4);
+  if (newZoom === zoom) return;
+  const wr = canvasWrap.getBoundingClientRect();
+  const sx = clientX - wr.left;
+  const sy = clientY - wr.top;
+  zoom = newZoom;
+  viewScale = fitScale * zoom;
+  const cw = LOGICAL_W * viewScale;
+  const ch = LOGICAL_H * viewScale;
+  const wrapW = canvasWrap.clientWidth;
+  const wrapH = canvasWrap.clientHeight;
+  panX = sx - (wrapW - cw) / 2 - before.x * viewScale;
+  panY = sy - (wrapH - ch) / 2 - before.y * viewScale;
+  layoutCanvas();
+  updateZoomUI();
+}
+
+function toLogical(e) {
+  const r = canvasEl.getBoundingClientRect();
+  return {
+    x: clamp((e.clientX - r.left) / viewScale, 0, LOGICAL_W),
+    y: clamp((e.clientY - r.top) / viewScale, 0, LOGICAL_H),
+  };
+}
+
+function loop() {
+  draw();
+  renderCursorLayer();
+  rafId = requestAnimationFrame(loop);
+}
+
+// ---------- 渲染 ----------
+function ensureImage(el) {
+  if (imgCache.has(el.id) || !el.src) return;
+  const im = new Image();
+  im.onload = () => { imgCache.set(el.id, im); };
+  im.src = el.src;
+}
+
+function draw() {
+  const ctx = ctx2d;
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, LOGICAL_W, LOGICAL_H);
+  // 纸张背景 + 点阵网格
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+  ctx.fillStyle = '#e9e9e6';
+  for (let x = 24; x < LOGICAL_W; x += 48) {
+    for (let y = 24; y < LOGICAL_H; y += 48) {
+      ctx.beginPath();
+      ctx.arc(x, y, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  if (!roomData) return;
+
+  for (const im of roomData.images) {
+    ensureImage(im);
+    drawImageEl(ctx, im);
+  }
+  for (const a of roomData.annotations) drawAnnotation(ctx, a);
+
+  if (hoveredId && hoveredId !== selectedId) drawSelectionOutline(ctx, hoveredId, 'rgba(47,111,235,.4)');
+  if (selectedId) drawSelectionOutline(ctx, selectedId, '#2f6feb');
+  drawActionPreview(ctx);
+}
+
+function drawImageEl(ctx, im) {
+  const img = imgCache.get(im.id);
+  ctx.save();
+  ctx.translate(im.x, im.y);
+  ctx.rotate(im.rotation || 0);
+  if (img) {
+    ctx.drawImage(img, -im.width / 2, -im.height / 2, im.width, im.height);
+  } else {
+    ctx.strokeStyle = '#c9c9c6';
+    ctx.strokeRect(-im.width / 2, -im.height / 2, im.width, im.height);
+  }
+  ctx.restore();
+}
+
+function drawAnnotation(ctx, a, withLock = true) {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = a.color;
+  ctx.fillStyle = a.color;
+  ctx.lineWidth = a.width || 2;
+  switch (a.kind) {
+    case 'pen': {
+      if (a.points.length < 2) break;
+      ctx.beginPath();
+      ctx.moveTo(a.points[0].x, a.points[0].y);
+      for (let i = 1; i < a.points.length; i++) ctx.lineTo(a.points[i].x, a.points[i].y);
+      ctx.stroke();
+      break;
+    }
+    case 'line': {
+      ctx.beginPath();
+      ctx.moveTo(a.x1, a.y1);
+      ctx.lineTo(a.x2, a.y2);
+      ctx.stroke();
+      break;
+    }
+    case 'arrow': {
+      ctx.beginPath();
+      ctx.moveTo(a.x1, a.y1);
+      ctx.lineTo(a.x2, a.y2);
+      ctx.stroke();
+      const ang = Math.atan2(a.y2 - a.y1, a.x2 - a.x1);
+      const len = 13 + (a.width || 2) * 2;
+      ctx.beginPath();
+      ctx.moveTo(a.x2, a.y2);
+      ctx.lineTo(a.x2 - len * Math.cos(ang - 0.42), a.y2 - len * Math.sin(ang - 0.42));
+      ctx.moveTo(a.x2, a.y2);
+      ctx.lineTo(a.x2 - len * Math.cos(ang + 0.42), a.y2 - len * Math.sin(ang + 0.42));
+      ctx.stroke();
+      break;
+    }
+    case 'rect': {
+      const x = Math.min(a.x1, a.x2), y = Math.min(a.y1, a.y2);
+      const w = Math.abs(a.x2 - a.x1), h = Math.abs(a.y2 - a.y1);
+      ctx.strokeRect(x, y, w, h);
+      break;
+    }
+    case 'circle': {
+      ctx.beginPath();
+      ctx.arc(a.cx, a.cy, Math.max(1, a.r), 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    }
+    case 'text': {
+      ctx.font = (a.fontSize || 26) + 'px "PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif';
+      ctx.textBaseline = 'top';
+      const lines = String(a.text || '').split('\n');
+      lines.forEach((line, i) => ctx.fillText(line, a.x, a.y + i * (a.fontSize || 26) * 1.25));
+      break;
+    }
+  }
+  ctx.restore();
+  if (withLock) drawLockBadge(ctx, a.id);
+}
+
+function drawLockBadge(ctx, id) {
+  const lock = locks.get(id);
+  if (!lock || lock.userId === me.id) return;
+  const bb = bboxOf(id);
+  ctx.save();
+  ctx.font = '15px serif';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('🔒', bb.x, bb.y - 2);
+  ctx.restore();
+}
+
+function bboxOf(id) {
+  const el = findElement(id);
+  if (!el) return { x: 0, y: 0, w: 0, h: 0 };
+  if (el.kind === 'image') {
+    const d = Math.max(el.width, el.height);
+    return { x: el.x - d / 2, y: el.y - d / 2, w: d, h: d };
+  }
+  if (el.kind === 'circle') return { x: el.cx - el.r, y: el.cy - el.r, w: el.r * 2, h: el.r * 2 };
+  if (el.kind === 'pen') {
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    for (const pt of el.points) {
+      x1 = Math.min(x1, pt.x); y1 = Math.min(y1, pt.y);
+      x2 = Math.max(x2, pt.x); y2 = Math.max(y2, pt.y);
+    }
+    return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+  }
+  if (el.kind === 'text') {
+    ctx2d.font = (el.fontSize || 26) + 'px "PingFang SC","Microsoft YaHei",sans-serif';
+    const lines = String(el.text || '').split('\n');
+    let w = 0;
+    for (const line of lines) w = Math.max(w, ctx2d.measureText(line).width);
+    return { x: el.x, y: el.y, w: w, h: lines.length * (el.fontSize || 26) * 1.25 };
+  }
+  return { x: Math.min(el.x1, el.x2), y: Math.min(el.y1, el.y2), w: Math.abs(el.x2 - el.x1), h: Math.abs(el.y2 - el.y1) };
+}
+
+function drawSelectionOutline(ctx, id, color) {
+  const el = findElement(id);
+  if (!el) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.6 / Math.max(1, viewScale);
+  ctx.setLineDash([6, 4]);
+  if (el.kind === 'image') {
+    ctx.translate(el.x, el.y);
+    ctx.rotate(el.rotation || 0);
+    const hw = el.width / 2, hh = el.height / 2;
+    ctx.strokeRect(-hw - 3, -hh - 3, el.width + 6, el.height + 6);
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(0, -hh - 4);
+    ctx.lineTo(0, -hh - 24);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, -hh - 30, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.stroke();
+    const hs = 7;
+    ctx.fillStyle = '#fff';
+    for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+      ctx.fillRect(sx * hw - hs / 2, sy * hh - hs / 2, hs, hs);
+      ctx.strokeRect(sx * hw - hs / 2, sy * hh - hs / 2, hs, hs);
+    }
+  } else {
+    const bb = bboxOf(id);
+    ctx.strokeRect(bb.x - 4, bb.y - 4, bb.w + 8, bb.h + 8);
+  }
+  ctx.restore();
+}
+
+function drawActionPreview(ctx) {
+  if (!currentAction) return;
+  if (currentAction.type === 'erase') {
+    const last = currentAction.points[currentAction.points.length - 1];
+    if (last) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(229,72,77,.75)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.arc(last.x, last.y, currentAction.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+// ---------- 命中测试 ----------
+function distToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+  t = clamp(t, 0, 1);
+  const x = ax + t * dx, y = ay + t * dy;
+  return Math.hypot(px - x, py - y);
+}
+
+function distToPolyline(p, pts) {
+  let d = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    d = Math.min(d, distToSegment(p.x, p.y, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y));
+  }
+  return d;
+}
+
+function hitImage(p, im) {
+  const dx = p.x - im.x, dy = p.y - im.y;
+  const cos = Math.cos(-(im.rotation || 0)), sin = Math.sin(-(im.rotation || 0));
+  const lx = dx * cos - dy * sin;
+  const ly = dx * sin + dy * cos;
+  return Math.abs(lx) <= im.width / 2 + 6 && Math.abs(ly) <= im.height / 2 + 6;
+}
+
+function hitAnnotation(p, a) {
+  const tol = Math.max(8, (a.width || 2) + 4);
+  switch (a.kind) {
+    case 'pen':
+      return a.points.length >= 2 && distToPolyline(p, a.points) <= tol;
+    case 'line':
+    case 'arrow':
+      return distToSegment(p.x, p.y, a.x1, a.y1, a.x2, a.y2) <= tol;
+    case 'rect': {
+      const x = Math.min(a.x1, a.x2), y = Math.min(a.y1, a.y2);
+      const w = Math.abs(a.x2 - a.x1), h = Math.abs(a.y2 - a.y1);
+      if (p.x >= x - tol && p.x <= x + w + tol && p.y >= y - tol && p.y <= y + h + tol) {
+        return p.x <= x + tol || p.x >= x + w - tol || p.y <= y + tol || p.y >= y + h - tol || (w < tol * 2 && h < tol * 2);
+      }
+      return false;
+    }
+    case 'circle':
+      return Math.hypot(p.x - a.cx, p.y - a.cy) <= a.r + tol;
+    case 'text': {
+      const bb = bboxOf(a.id);
+      return p.x >= bb.x - 4 && p.x <= bb.x + bb.w + 4 && p.y >= bb.y - 4 && p.y <= bb.y + bb.h + 4;
+    }
+  }
+  return false;
+}
+
+function hitTest(p) {
+  if (!roomData) return null;
+  for (let i = roomData.annotations.length - 1; i >= 0; i--) {
+    if (hitAnnotation(p, roomData.annotations[i])) return roomData.annotations[i];
+  }
+  for (let i = roomData.images.length - 1; i >= 0; i--) {
+    if (hitImage(p, roomData.images[i])) return roomData.images[i];
+  }
+  return null;
+}
+
+function toLocal(p, el) {
+  const dx = p.x - el.x, dy = p.y - el.y;
+  const cos = Math.cos(-(el.rotation || 0)), sin = Math.sin(-(el.rotation || 0));
+  return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+}
+
+// ---------- 发送操作 ----------
+function setSaveState(s) {
+  const el = $('#saveState');
+  el.textContent = s === 'saving' ? '保存中…' : '已保存';
+  el.classList.toggle('saving', s === 'saving');
+}
+
+function sendOp(op, opts) {
+  opts = opts || {};
+  if (!currentRoomId || !roomData) return false;
+  if (!canEdit) {
+    toast('该房间为只读，您没有编辑权限', 'error');
+    if (opts.onFail) opts.onFail();
+    return false;
+  }
+  // 元素类操作自动携带当前页面 ID；页面管理操作自带 pageId
+  if (!PAGE_OPS.has(op.type) && op.pageId == null && activePage) op.pageId = activePage.id;
+  setSaveState('saving');
+  socket.emit('op', { roomId: currentRoomId, op }, (res) => {
+    if (!res || !res.ok) {
+      setSaveState('saved');
+      if (opts.onFail) opts.onFail();
+      if (res && res.reason) toast(res.reason, 'error');
+      return;
+    }
+    if (res.historyEntry) pushHistory(res.historyEntry);
+    setSaveState('saved');
+    idbPut(snapshotForIDB());
+  });
+  return true;
+}
+
+function sendTransient(op) {
+  if (!currentRoomId || !canEdit) return;
+  if (op.pageId == null && activePage) op.pageId = activePage.id;
+  socket.emit('op', { roomId: currentRoomId, op: Object.assign({ transient: true }, op) });
+}
+
+// ---------- 服务端操作回放 ----------
+const PAGE_OPS = new Set(['add-page', 'rename-page', 'delete-page']);
+
+function replaceElement(list, el) {
+  const i = list.findIndex((e) => e.id === el.id);
+  if (i >= 0) list[i] = el;
+  else list.push(el);
+}
+
+function applyPersistedOp(op) {
+  if (!roomData) return;
+  if (op.type === 'add-page') {
+    if (!roomData.pages.some((p) => p.id === op.page.id)) {
+      roomData.pages.push({
+        id: op.page.id,
+        name: op.page.name,
+        images: op.page.images || [],
+        annotations: op.page.annotations || [],
+      });
+      renderPageBar();
+    }
+    return;
+  }
+  if (op.type === 'rename-page') {
+    const p = pageById(op.pageId);
+    if (p) {
+      p.name = op.name;
+      renderPageBar();
+    }
+    return;
+  }
+  if (op.type === 'delete-page') {
+    const idx = roomData.pages.findIndex((p) => p.id === op.pageId);
+    if (idx >= 0) {
+      roomData.pages.splice(idx, 1);
+      if (activePageId === op.pageId) switchPage(roomData.pages[0].id, true);
+      renderPageBar();
+    }
+    return;
+  }
+  const page = pageById(op.pageId);
+  if (!page) return;
+  const images = page.images;
+  const annotations = page.annotations;
+  switch (op.type) {
+    case 'add-image':
+      if (!images.some((e) => e.id === op.element.id)) {
+        images.push(op.element);
+        ensureImage(op.element);
+      }
+      break;
+    case 'add-annotation':
+      replaceElement(annotations, op.element);
+      break;
+    case 'update-annotation':
+      replaceElement(annotations, op.element);
+      break;
+    case 'transform-image': {
+      const im = images.find((e) => e.id === op.id);
+      if (im) Object.assign(im, { x: op.x, y: op.y, rotation: op.rotation, width: op.width, height: op.height });
+      break;
+    }
+    case 'erase': {
+      const del = new Set(op.deletedIds || []);
+      page.annotations = annotations.filter((e) => !del.has(e.id));
+      for (const stroke of op.modifiedStrokes || []) replaceElement(page.annotations, stroke);
+      break;
+    }
+    case 'delete-elements': {
+      const del = new Set(op.ids || []);
+      page.images = images.filter((e) => !del.has(e.id));
+      page.annotations = annotations.filter((e) => !del.has(e.id));
+      for (const id of del) { locks.delete(id); imgCache.delete(id); }
+      if (selectedId && del.has(selectedId)) { selectedId = null; updateInspector(); }
+      break;
+    }
+    case 'duplicate':
+      for (const el of op.elements || []) {
+        if (el.layer === 'image') {
+          page.images.push(el);
+          ensureImage(el);
+        } else page.annotations.push(el);
+      }
+      break;
+    case 'reorder': {
+      const arr = op.layer === 'images' ? page.images : page.annotations;
+      const ids = new Set(op.ids || []);
+      const sel = arr.filter((e) => ids.has(e.id));
+      const rest = arr.filter((e) => !ids.has(e.id));
+      const merged = op.mode === 'back' ? sel.concat(rest) : rest.concat(sel);
+      if (op.layer === 'images') page.images = merged;
+      else page.annotations = merged;
+      break;
+    }
+    case 'clear-annotations':
+      page.annotations = [];
+      if (selectedId && !findElement(selectedId)) { selectedId = null; updateInspector(); }
+      break;
+  }
+}
+
+function applyTransientOp(op) {
+  if (!roomData) return;
+  const page = pageById(op.pageId);
+  if (!page) return;
+  switch (op.type) {
+    case 'image-transform': {
+      const im = page.images.find((e) => e.id === op.id);
+      if (im) Object.assign(im, { x: op.x, y: op.y, rotation: op.rotation, width: op.width, height: op.height });
+      break;
+    }
+    case 'stroke-progress':
+    case 'shape-progress':
+    case 'annotation-transform':
+      replaceElement(page.annotations, op.element);
+      break;
+  }
+}
+
+socket.on('op', (msg) => {
+  if (!roomData) return;
+  if (msg.by && msg.by.userId === me.id) return; // 自己发送的操作已在本地应用
+  if (msg.transient) { applyTransientOp(msg.op); return; }
+  applyPersistedOp(msg.op);
+  if (msg.historyEntry) pushHistory(msg.historyEntry);
+  setSaveState('saved');
+  idbPut(snapshotForIDB());
+});
+
+// ---------- 历史记录 ----------
+function pushHistory(entry) {
+  if (!roomData) return;
+  roomData.history = roomData.history || [];
+  roomData.history.push(entry);
+  if (roomData.history.length > 1000) roomData.history.splice(0, roomData.history.length - 1000);
+  renderTimeline();
+}
+
+function renderTimeline() {
+  const tl = $('#timeline');
+  if (!roomData || !roomData.history.length) {
+    tl.innerHTML = '<div class="tl-empty">暂无操作记录<br>绘制、上传图片等操作会显示在这里</div>';
+    return;
+  }
+  tl.innerHTML = roomData.history.map((h) =>
+    '<div class="tl-item"><div class="tl-text">[' + esc(h.time) + '] ' + esc(h.text) + '</div></div>'
+  ).join('');
+  tl.scrollTop = tl.scrollHeight;
+}
+
+// ---------- 成员与光标 ----------
+function renderMembers() {
+  const list = $('#memberList');
+  $('#memberCount').textContent = members.length + ' 人在线';
+  if (!members.length) {
+    list.innerHTML = '<div class="tl-empty">暂无在线成员</div>';
+    return;
+  }
+  list.innerHTML = members.map((m) => {
+    const isMe = m.userId === me.id;
+    const isAdminRow = roomData && roomData.createdBy === m.userId;
+    const cur = m.cursor && m.cursor.x >= 0 ? '(' + Math.round(m.cursor.x) + ', ' + Math.round(m.cursor.y) + ')' : '';
+    return '<div class="member-row">'
+      + '<div class="avatar" style="background:' + esc(m.color) + '">' + esc(String(m.name).slice(0, 1)) + '</div>'
+      + '<div class="nm">' + esc(m.name) + '</div>'
+      + (isAdminRow ? '<span class="tag admin">创建者</span>' : '')
+      + (isMe ? '<span class="tag me">我</span>' : '')
+      + (cur ? '<span class="cursor-pos">' + cur + '</span>' : '')
+      + '</div>';
+  }).join('');
+}
+
+function renderCursorLayer() {
+  const layer = $('#cursorLayer');
+  let html = '';
+  for (const [userId, cur] of memberCursors) {
+    if (userId === me.id || !cur || cur.x < 0) continue;
+    const sp = logicalToScreen(cur);
+    html += '<div class="remote-cursor" style="left:' + sp.x + 'px;top:' + sp.y + 'px">'
+      + '<span class="dot" style="background:' + esc(cur.color) + '"></span>'
+      + '<span class="nm" style="background:' + esc(cur.color) + '">' + esc(cur.name) + '</span>'
+      + '</div>';
+  }
+  layer.innerHTML = html;
+}
+
+// ---------- 交互 ----------
+function bindCanvasEvents() {
+  canvasWrap.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
+  canvasEl.addEventListener('dblclick', (e) => {
+    if (currentTool !== 'select' || !canEdit) return;
+    const p = toLogical(e);
+    if (!hitTest(p)) placeText(p);
+  });
+  canvasEl.addEventListener('mouseleave', () => {
+    hoveredId = null;
+    if (currentRoomId) socket.emit('cursor', { roomId: currentRoomId, x: -1, y: -1 });
+  });
+  // 滚轮缩放（以光标位置为锚点）
+  canvasWrap.addEventListener('wheel', (e) => {
+    if (e.target && e.target.closest && e.target.closest('.float-inspector')) return;
+    e.preventDefault();
+    const factor = Math.exp(-e.deltaY * 0.0016);
+    zoomAt(e.clientX, e.clientY, factor);
+  }, { passive: false });
+}
+
+function onPointerDown(e) {
+  if (!roomData) return;
+  const target = e.target;
+  if (target && target.closest && (target.closest('.float-inspector') || target.closest('.text-edit'))) return;
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  // 第二根手指落下：取消当前操作，进入双指缩放/平移
+  if (activePointers.size === 2) {
+    cancelCurrentAction();
+    const pts = Array.from(activePointers.values());
+    pinch = {
+      dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+      zoom,
+      mx: (pts[0].x + pts[1].x) / 2,
+      my: (pts[0].y + pts[1].y) / 2,
+    };
+    canvasWrap.setPointerCapture(e.pointerId);
+    return;
+  }
+  const r = canvasEl.getBoundingClientRect();
+  const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  // 中键或空格+左键：平移画布
+  if (e.button === 1 || (spaceDown && e.button === 0)) {
+    e.preventDefault();
+    currentAction = { type: 'pan', startX: e.clientX, startY: e.clientY, panX, panY };
+    canvasWrap.setPointerCapture(e.pointerId);
+    return;
+  }
+  if (e.button !== 0 || !inside) return;
+  if (e.pointerType === 'touch') canvasWrap.setPointerCapture(e.pointerId);
+  const p = toLogical(e);
+  if (currentTool === 'pen') startPen(p);
+  else if (currentTool === 'eraser') startErase(p);
+  else if (currentTool === 'line' || currentTool === 'rect' || currentTool === 'circle' || currentTool === 'arrow') startShape(p);
+  else if (currentTool === 'text') placeText(p);
+  else {
+    const el = hitTest(p);
+    if (el) {
+      select(el.id);
+      startElementAction(p, el);
+    } else {
+      selectedId = null;
+      updateInspector();
+    }
+  }
+}
+
+function onPointerMove(e) {
+  if (activePointers.has(e.pointerId)) {
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  }
+  // 双指缩放/平移
+  if (pinch && activePointers.size >= 2) {
+    const pts = Array.from(activePointers.values());
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+    const mx = (pts[0].x + pts[1].x) / 2;
+    const my = (pts[0].y + pts[1].y) / 2;
+    const wr = canvasWrap.getBoundingClientRect();
+    const sx = mx - wr.left;
+    const sy = my - wr.top;
+    const logicalBefore = toLogical({ clientX: mx, clientY: my });
+    zoom = clamp(pinch.zoom * (dist / pinch.dist), 0.2, 4);
+    viewScale = fitScale * zoom;
+    const cw = LOGICAL_W * viewScale;
+    const ch = LOGICAL_H * viewScale;
+    const wrapW = canvasWrap.clientWidth;
+    const wrapH = canvasWrap.clientHeight;
+    panX = sx - (wrapW - cw) / 2 - logicalBefore.x * viewScale;
+    panY = sy - (wrapH - ch) / 2 - logicalBefore.y * viewScale;
+    layoutCanvas();
+    updateZoomUI();
+    return;
+  }
+  const p = toLogical(e);
+  if (currentRoomId && Date.now() - lastCursorSent > 40) {
+    lastCursorSent = Date.now();
+    socket.emit('cursor', { roomId: currentRoomId, x: Math.round(p.x), y: Math.round(p.y) });
+  }
+
+  if (!currentAction) {
+    if (currentTool === 'select') {
+      const el = hitTest(p);
+      hoveredId = el ? el.id : null;
+      const lock = el ? locks.get(el.id) : null;
+      canvasEl.style.cursor = (lock && lock.userId !== me.id) ? 'not-allowed' : (el ? 'move' : 'default');
+    }
+    return;
+  }
+
+  const act = currentAction;
+  if (act.type === 'pan') {
+    panX = act.panX + (e.clientX - act.startX);
+    panY = act.panY + (e.clientY - act.startY);
+    layoutCanvas();
+    return;
+  }
+  if (act.type === 'move') {
+    const el = findElement(act.id);
+    if (!el) return;
+    const dx = p.x - act.startX, dy = p.y - act.startY;
+    if (Math.abs(dx) + Math.abs(dy) > 1) act.moved = true;
+    if (el.kind === 'image') {
+      el.x = act.snapshot.x + dx;
+      el.y = act.snapshot.y + dy;
+      sendTransient({ type: 'image-transform', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
+    } else {
+      const s = act.snapshot;
+      if (el.kind === 'pen') el.points = s.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }));
+      else if (el.kind === 'line' || el.kind === 'arrow' || el.kind === 'rect') {
+        el.x1 = s.x1 + dx; el.y1 = s.y1 + dy; el.x2 = s.x2 + dx; el.y2 = s.y2 + dy;
+      } else if (el.kind === 'circle') { el.cx = s.cx + dx; el.cy = s.cy + dy; }
+      else if (el.kind === 'text') { el.x = s.x + dx; el.y = s.y + dy; }
+      sendTransient({ type: 'annotation-transform', element: JSON.parse(JSON.stringify(el)) });
+    }
+  } else if (act.type === 'resize') {
+    const el = findElement(act.id);
+    if (!el) return;
+    const l = toLocal(p, el);
+    const sl = toLocal({ x: act.startX, y: act.startY }, el);
+    const sx = act.corner[0], sy = act.corner[1];
+    const startDist = Math.max(24, Math.hypot(sl.x, sl.y));
+    const d = (sx * l.x + sy * l.y) - (sx * sl.x + sy * sl.y);
+    const factor = clamp(1 + d / startDist, 0.15, 8);
+    el.width = Math.max(24, act.snapshot.width * factor);
+    el.height = Math.max(24, act.snapshot.height * factor);
+    act.moved = true;
+    sendTransient({ type: 'image-transform', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
+  } else if (act.type === 'rotate') {
+    const el = findElement(act.id);
+    if (!el) return;
+    const l = toLocal(p, el);
+    const sl = toLocal({ x: act.startX, y: act.startY }, el);
+    const ang = Math.atan2(l.y, l.x);
+    const startAng = Math.atan2(sl.y, sl.x);
+    el.rotation = act.snapshot.rotation + (ang - startAng);
+    act.moved = true;
+    sendTransient({ type: 'image-transform', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
+  } else if (act.type === 'shape') {
+    const el = act.element;
+    if (el.kind === 'circle') {
+      el.r = Math.hypot(p.x - el.cx, p.y - el.cy);
+    } else {
+      el.x2 = p.x; el.y2 = p.y;
+    }
+    if (Date.now() - act.lastSend > 40) {
+      act.lastSend = Date.now();
+      sendTransient({ type: 'shape-progress', element: JSON.parse(JSON.stringify(el)) });
+    }
+  } else if (act.type === 'pen') {
+    const el = act.element;
+    const last = el.points[el.points.length - 1];
+    if (Math.hypot(p.x - last.x, p.y - last.y) > 1.5) el.points.push({ x: p.x, y: p.y });
+    if (Date.now() - act.lastSend > 40) {
+      act.lastSend = Date.now();
+      sendTransient({ type: 'stroke-progress', element: JSON.parse(JSON.stringify(el)) });
+    }
+  } else if (act.type === 'erase') {
+    const last = act.points[act.points.length - 1];
+    if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 3) act.points.push({ x: p.x, y: p.y });
+  }
+}
+
+function onPointerUp(e) {
+  activePointers.delete(e.pointerId);
+  if (activePointers.size < 2) pinch = null;
+  const act = currentAction;
+  if (!act) return;
+  if (act.type === 'pan') { currentAction = null; return; }
+  const p = toLogical(e);
+  if (act.id) releaseLock(act.id);
+
+  if ((act.type === 'move' || act.type === 'resize' || act.type === 'rotate') && act.moved) {
+    const el = findElement(act.id);
+    if (el && el.kind === 'image') {
+      sendOp({ type: 'transform-image', id: el.id, x: el.x, y: el.y, rotation: el.rotation || 0, width: el.width, height: el.height }, {
+        onFail: () => { const t = findElement(act.id); if (t) Object.assign(t, act.snapshot); },
+      });
+    } else if (el) {
+      sendOp({ type: 'update-annotation', element: JSON.parse(JSON.stringify(el)) }, {
+        onFail: () => { const t = findElement(act.id); if (t) Object.assign(t, act.snapshot); },
+      });
+    }
+  }
+  if (act.type === 'shape') {
+    const el = act.element;
+    if (el.kind === 'rect') {
+      const x1 = Math.min(el.x1, el.x2), y1 = Math.min(el.y1, el.y2);
+      el.x1 = x1; el.y1 = y1; el.x2 = x1 + Math.abs(el.x2 - el.x1); el.y2 = y1 + Math.abs(el.y2 - el.y1);
+    }
+    const sizeOk = el.kind === 'circle' ? el.r > 3 : Math.hypot(el.x2 - el.x1, el.y2 - el.y1) > 3;
+    if (sizeOk) {
+      selectedId = el.id;
+      sendOp({ type: 'add-annotation', element: el }, { onFail: () => { removeElementLocal(el.id); } });
+    } else {
+      removeElementLocal(el.id);
+    }
+    updateInspector();
+  }
+  if (act.type === 'pen') {
+    const el = act.element;
+    if (el.points.length >= 2) {
+      selectedId = el.id;
+      sendOp({ type: 'add-annotation', element: el }, { onFail: () => { removeElementLocal(el.id); } });
+    } else {
+      removeElementLocal(el.id);
+    }
+    updateInspector();
+  }
+  if (act.type === 'erase') {
+    finishErase(act);
+  }
+  currentAction = null;
+}
+
+/** 取消当前绘制/拖拽（双指手势开始时调用） */
+function cancelCurrentAction() {
+  const act = currentAction;
+  if (!act) return;
+  if (act.type === 'shape' || act.type === 'pen') {
+    if (act.element) removeElementLocal(act.element.id);
+  } else if (act.id) {
+    const el = findElement(act.id);
+    if (el && act.snapshot) Object.assign(el, act.snapshot);
+    releaseLock(act.id);
+  }
+  currentAction = null;
+}
+
+function removeElementLocal(id) {
+  if (!roomData) return;
+  roomData.images = roomData.images.filter((e) => e.id !== id);
+  roomData.annotations = roomData.annotations.filter((e) => e.id !== id);
+  if (selectedId === id) { selectedId = null; updateInspector(); }
+}
+
+function startElementAction(p, el) {
+  if (!canEdit) return; // 只读模式下仅允许查看/选择
+  const lock = locks.get(el.id);
+  if (lock && lock.userId !== me.id) {
+    toast(lock.userName + ' 正在编辑该元素', 'error');
+    return;
+  }
+  const snapshot = JSON.parse(JSON.stringify(el));
+  const act = { type: 'move', id: el.id, startX: p.x, startY: p.y, snapshot, moved: false };
+  currentAction = act;
+
+  if (el.kind === 'image') {
+    const local = toLocal(p, el);
+    const hw = el.width / 2, hh = el.height / 2;
+    if (Math.hypot(local.x, local.y + hh + 30) < 14) {
+      act.type = 'rotate';
+      canvasEl.style.cursor = 'grab';
+    } else {
+      for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+        if (Math.hypot(local.x - sx * hw, local.y - sy * hh) < 16) {
+          act.type = 'resize';
+          act.corner = [sx, sy];
+          canvasEl.style.cursor = 'nwse-resize';
+          break;
+        }
+      }
+    }
+  }
+
+  socket.emit('lock-element', { roomId: currentRoomId, elementId: el.id }, (res) => {
+    if (res && res.ok) {
+      locks.set(el.id, res.lock);
+    } else {
+      // 锁被他人抢先：回滚
+      const target = findElement(el.id);
+      if (target) Object.assign(target, snapshot);
+      if (res && res.lock) toast(res.lock.userName + ' 正在编辑该元素，已取消操作', 'error');
+      else if (res && res.reason) toast(res.reason, 'error');
+      currentAction = null;
+    }
+  });
+}
+
+function releaseLock(id) {
+  socket.emit('unlock-element', { roomId: currentRoomId, elementId: id });
+  locks.delete(id);
+}
+
+function startPen(p) {
+  if (!canEdit) { toast('只读模式，无法绘制', 'error'); return; }
+  const el = {
+    id: uid(), kind: 'pen', layer: 'annotation',
+    color: toolColor, width: Number($('#strokeWidth').value),
+    points: [{ x: p.x, y: p.y }],
+  };
+  roomData.annotations.push(el);
+  currentAction = { type: 'pen', element: el, lastSend: 0 };
+  canvasEl.style.cursor = 'crosshair';
+}
+
+function startShape(p) {
+  if (!canEdit) { toast('只读模式，无法绘制', 'error'); return; }
+  const width = Number($('#strokeWidth').value);
+  const base = { id: uid(), kind: currentTool, layer: 'annotation', color: toolColor, width };
+  let el;
+  if (currentTool === 'circle') el = Object.assign(base, { cx: p.x, cy: p.y, r: 0 });
+  else el = Object.assign(base, { x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+  roomData.annotations.push(el);
+  currentAction = { type: 'shape', element: el, lastSend: 0 };
+  canvasEl.style.cursor = 'crosshair';
+}
+
+function startErase(p) {
+  if (!canEdit) { toast('只读模式，无法擦除', 'error'); return; }
+  currentAction = { type: 'erase', points: [{ x: p.x, y: p.y }], radius: 16 };
+  canvasEl.style.cursor = 'crosshair';
+}
+
+function nearEraser(pt, act) {
+  const r = act.radius;
+  const pts = act.points;
+  for (let i = 0; i < pts.length - 1; i++) {
+    if (distToSegment(pt.x, pt.y, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y) <= r) return true;
+  }
+  return pts.length === 1 && Math.hypot(pt.x - pts[0].x, pt.y - pts[0].y) <= r;
+}
+
+function eraseAffects(a, act) {
+  const r = act.radius;
+  for (const pt of act.points) {
+    if (a.kind === 'line' || a.kind === 'arrow') {
+      if (distToSegment(pt.x, pt.y, a.x1, a.y1, a.x2, a.y2) <= r + (a.width || 2) / 2) return true;
+    } else if (a.kind === 'rect') {
+      const x = Math.min(a.x1, a.x2), y = Math.min(a.y1, a.y2);
+      const w = Math.abs(a.x2 - a.x1), h = Math.abs(a.y2 - a.y1);
+      const bb = { x: x - r, y: y - r, w: w + r * 2, h: h + r * 2 };
+      if (pt.x >= bb.x && pt.x <= bb.x + bb.w && pt.y >= bb.y && pt.y <= bb.y + bb.h) return true;
+    } else if (a.kind === 'circle') {
+      if (Math.hypot(pt.x - a.cx, pt.y - a.cy) <= a.r + r) return true;
+    } else if (a.kind === 'text') {
+      const bb = bboxOf(a.id);
+      if (pt.x >= bb.x - r && pt.x <= bb.x + bb.w + r && pt.y >= bb.y - r && pt.y <= bb.y + bb.h + r) return true;
+    }
+  }
+  return false;
+}
+
+function finishErase(act) {
+  if (!roomData) return;
+  const deletedIds = [];
+  const modifiedStrokes = [];
+  for (const a of roomData.annotations) {
+    if (a.kind === 'pen') {
+      const kept = a.points.filter((pt) => !nearEraser(pt, act));
+      if (kept.length < 2) deletedIds.push(a.id);
+      else if (kept.length !== a.points.length) modifiedStrokes.push(Object.assign({}, a, { points: kept }));
+    } else if (eraseAffects(a, act)) {
+      deletedIds.push(a.id);
+    }
+  }
+  if (deletedIds.length || modifiedStrokes.length) {
+    const delSet = new Set(deletedIds);
+    roomData.annotations = roomData.annotations.filter((e) => !delSet.has(e.id));
+    for (const s of modifiedStrokes) replaceElement(roomData.annotations, s);
+    if (selectedId && delSet.has(selectedId)) { selectedId = null; updateInspector(); }
+    sendOp({ type: 'erase', deletedIds, modifiedStrokes });
+  }
+}
+
+function placeText(p) {
+  if (!canEdit) { toast('只读模式，无法添加文字', 'error'); return; }
+  if ($('.text-edit')) return;
+  const fontSize = Number($('#fontSize').value);
+  const el = document.createElement('textarea');
+  el.className = 'text-edit';
+  const sp = logicalToScreen(p);
+  el.style.left = sp.x + 'px';
+  el.style.top = sp.y + 'px';
+  el.style.fontSize = (fontSize * viewScale) + 'px';
+  el.dataset.size = fontSize;
+  el.dataset.lx = p.x;
+  el.dataset.ly = p.y;
+  el.style.width = Math.max(120, fontSize * 4 * viewScale) + 'px';
+  el.rows = 1;
+  canvasWrap.appendChild(el);
+  el.focus();
+  let committed = false;
+  const commit = () => {
+    if (committed) return;
+    committed = true;
+    const text = el.value;
+    el.remove();
+    if (text.trim()) {
+      const a = { id: uid(), kind: 'text', layer: 'annotation', color: toolColor, x: p.x, y: p.y, fontSize, text };
+      roomData.annotations.push(a);
+      selectedId = a.id;
+      sendOp({ type: 'add-annotation', element: a }, { onFail: () => removeElementLocal(a.id) });
+      updateInspector();
+    }
+  };
+  el.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); commit(); }
+    if (ev.key === 'Escape') { ev.preventDefault(); committed = true; el.remove(); }
+  });
+  el.addEventListener('blur', commit);
+}
+
+// ---------- 选择与元素操作 ----------
+function select(id) {
+  selectedId = id;
+  updateInspector();
+}
+
+function updateInspector() {
+  const insp = $('#floatInspector');
+  if (!selectedId || !findElement(selectedId)) {
+    insp.classList.add('hidden');
+    return;
+  }
+  insp.classList.remove('hidden');
+  const lock = locks.get(selectedId);
+  const note = $('#inspLockNote');
+  if (lock && lock.userId !== me.id) {
+    note.textContent = '🔒 ' + lock.userName + ' 正在编辑';
+    note.classList.remove('hidden');
+  } else {
+    note.classList.add('hidden');
+  }
+}
+
+function deleteSelected() {
+  if (!selectedId || !canEdit) return;
+  const id = selectedId;
+  removeElementLocal(id);
+  sendOp({ type: 'delete-elements', ids: [id] });
+}
+
+function duplicateElement(el, dx = 26, dy = 26) {
+  const clone = JSON.parse(JSON.stringify(el));
+  clone.id = uid();
+  if (clone.kind === 'image') { clone.x += dx; clone.y += dy; }
+  else if (clone.kind === 'circle') { clone.cx += dx; clone.cy += dy; }
+  else if (clone.kind === 'text') { clone.x += dx; clone.y += dy; }
+  else if (clone.kind === 'pen') clone.points = clone.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }));
+  else { clone.x1 += dx; clone.y1 += dy; clone.x2 += dx; clone.y2 += dy; }
+  return clone;
+}
+
+function duplicateSelected() {
+  const el = selectedId && findElement(selectedId);
+  if (!el || !canEdit) return;
+  const clone = duplicateElement(el);
+  if (clone.layer === 'image') { roomData.images.push(clone); ensureImage(clone); }
+  else roomData.annotations.push(clone);
+  selectedId = clone.id;
+  sendOp({ type: 'duplicate', elements: [clone] });
+  updateInspector();
+}
+
+function reorderSelected(mode) {
+  const el = selectedId && findElement(selectedId);
+  if (!el || !canEdit) return;
+  const layer = el.layer === 'image' ? 'images' : 'annotations';
+  const arr = layer === 'images' ? roomData.images : roomData.annotations;
+  const sel = arr.filter((e) => e.id === el.id);
+  const rest = arr.filter((e) => e.id !== el.id);
+  const merged = mode === 'back' ? sel.concat(rest) : rest.concat(sel);
+  if (layer === 'images') roomData.images = merged;
+  else roomData.annotations = merged;
+  sendOp({ type: 'reorder', layer, ids: [el.id], mode });
+}
+
+// ---------- 图片上传 ----------
+async function addImageFromFile(file) {
+  if (!canEdit) { toast('只读模式，无法上传图片', 'error'); return; }
+  try {
+    const dataUrl = await compressImage(file, 1600, 0.85);
+    const img = new Image();
+    img.onload = () => {
+      const maxW = LOGICAL_W * 0.6, maxH = LOGICAL_H * 0.6;
+      const s = Math.min(1, maxW / img.width, maxH / img.height);
+      const el = {
+        id: uid(), kind: 'image', layer: 'image', src: dataUrl,
+        x: LOGICAL_W / 2, y: LOGICAL_H / 2,
+        width: img.width * s, height: img.height * s, rotation: 0,
+      };
+      imgCache.set(el.id, img);
+      roomData.images.push(el);
+      selectedId = el.id;
+      sendOp({ type: 'add-image', element: el }, { onFail: () => removeElementLocal(el.id) });
+      updateInspector();
+      toast('图片已添加', 'ok');
+    };
+    img.onerror = () => toast('图片加载失败', 'error');
+    img.src = dataUrl;
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+// ---------- 房间打开 / 关闭 ----------
+function applyServerData(data) {
+  const pages = normalizePages(data);
+  roomData = {
+    id: data.id,
+    name: data.name,
+    editPermission: data.editPermission,
+    createdBy: data.createdBy,
+    createdAt: data.createdAt,
+    lastModified: data.lastModified,
+    revision: data.revision || 0,
+    pages,
+    history: data.history || [],
+  };
+  const want = data.activePageId || pages[0].id;
+  activePage = pages.find((p) => p.id === want) || pages[0];
+  activePageId = activePage.id;
+  // 让旧代码中的 roomData.images / roomData.annotations 始终指向当前页
+  Object.defineProperty(roomData, 'images', {
+    get() { return activePage ? activePage.images : []; },
+    set(v) { if (activePage) activePage.images = v; },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(roomData, 'annotations', {
+    get() { return activePage ? activePage.annotations : []; },
+    set(v) { if (activePage) activePage.annotations = v; },
+    enumerable: true,
+    configurable: true,
+  });
+  locks = new Map(Object.entries(data.locks || {}));
+  for (const page of roomData.pages) {
+    for (const im of page.images) ensureImage(im);
+  }
+  $('#roomName').textContent = roomData.name;
+  updatePermUI();
+  renderTimeline();
+  renderMembers();
+  updateInspector();
+  renderPageBar();
+  resetZoom();
+}
+
+/** 兼容旧版单页数据（顶层 images/annotations） */
+function normalizePages(data) {
+  if (Array.isArray(data.pages) && data.pages.length) {
+    return data.pages.map((p) => ({
+      id: p.id,
+      name: p.name || '第 1 页',
+      images: p.images || [],
+      annotations: p.annotations || [],
+    }));
+  }
+  return [{
+    id: 'page_1',
+    name: '第 1 页',
+    images: data.images || [],
+    annotations: data.annotations || [],
+  }];
+}
+
+function updatePermUI() {
+  isAdmin = !!(roomData && roomData.createdBy === me.id);
+  canEdit = !!(roomData && (roomData.editPermission === 'editable' || isAdmin));
+  const badge = $('#permBadge');
+  badge.textContent = roomData && roomData.editPermission === 'readonly' ? '只读' : '可编辑';
+  badge.classList.toggle('ro', !!(roomData && roomData.editPermission === 'readonly'));
+  $('#readonlyBanner').classList.toggle('hidden', canEdit);
+  for (const b of document.querySelectorAll('#toolbar .tool-btn')) {
+    b.disabled = !canEdit && b.dataset.tool !== 'select';
+  }
+  $('#btnUploadImage').disabled = !canEdit;
+  $('#btnAddPage').disabled = !canEdit;
+}
+
+async function openRoom(roomId, password) {
+  joinPassword = password || '';
+  currentRoomId = roomId;
+  selectedId = null;
+  hoveredId = null;
+  currentAction = null;
+  copyBuffer = null;
+  locks = new Map();
+  members = [];
+  memberCursors.clear();
+  roomData = null;
+  activePage = null;
+  activePageId = null;
+  renderTimeline();
+  renderMembers();
+  updateInspector();
+  $('#homeView').classList.add('hidden');
+  $('#editorView').classList.remove('hidden');
+  resizeCanvas(); // 编辑器此刻才可见，必须用真实尺寸重新布局画布
+  setConn('connecting');
+
+  let data = null;
+  try {
+    data = await fetchJSON('/api/rooms/' + roomId + '/data', {}, 8000);
+  } catch (e) {
+    data = await idbGet(roomId);
+    if (data) toast('服务器数据暂时不可用，已从本地缓存恢复', 'error');
+  }
+  if (!data) { toast('无法加载房间数据', 'error'); goHome(); return; }
+  applyServerData(data);
+  idbPut(snapshotForIDB());
+
+  if (!socket.connected) {
+    toast('无法连接实时服务器，请检查 node server.js 是否在运行', 'error');
+    goHome();
+    return;
+  }
+  socket.emit('join-room', { roomId, password: joinPassword, user: me }, (res) => {
+    if (!res || !res.ok) {
+      toast((res && res.reason) || '加入房间失败', 'error');
+      goHome();
+      return;
+    }
+    applyServerData(res.data);
+    idbPut(snapshotForIDB());
+    setConn('on');
+    toast('已进入「' + roomData.name + '」', 'ok');
+  });
+}
+
+function goHome() {
+  if (currentRoomId) socket.emit('leave-room');
+  currentRoomId = null;
+  roomData = null;
+  activePage = null;
+  activePageId = null;
+  selectedId = null;
+  currentAction = null;
+  locks = new Map();
+  members = [];
+  memberCursors.clear();
+  $('#editorView').classList.add('hidden');
+  $('#homeView').classList.remove('hidden');
+  renderPageBar();
+  loadRooms();
+}
+
+// ---------- 多页管理 ----------
+function pageNumberName(n) {
+  return '第 ' + n + ' 页';
+}
+
+function nextPageNumber() {
+  let max = 0;
+  for (const p of roomData.pages) {
+    const m = /第\s*(\d+)\s*页/.exec(p.name);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return max + 1;
+}
+
+function pageById(id) {
+  if (!roomData || !roomData.pages) return null;
+  return roomData.pages.find((p) => p.id === id) || roomData.pages[0] || null;
+}
+
+function renderPageBar() {
+  const tabs = $('#pageTabs');
+  if (!roomData || !roomData.pages || !roomData.pages.length) {
+    tabs.innerHTML = '';
+    return;
+  }
+  tabs.innerHTML = roomData.pages.map((p) =>
+    '<div class="page-tab' + (p.id === activePageId ? ' active' : '') + '" data-id="' + esc(p.id) + '" title="点击切换 · 双击重命名">'
+    + '<span class="pt-name">' + esc(p.name) + '</span>'
+    + (roomData.pages.length > 1 ? '<span class="pt-del" title="删除页面">×</span>' : '')
+    + '</div>'
+  ).join('');
+  for (const tab of tabs.querySelectorAll('.page-tab')) {
+    tab.addEventListener('click', (e) => {
+      if (e.target.classList.contains('pt-del')) return;
+      switchPage(tab.dataset.id);
+    });
+    tab.addEventListener('dblclick', () => renamePage(tab.dataset.id));
+    const del = tab.querySelector('.pt-del');
+    if (del) del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deletePage(tab.dataset.id);
+    });
+  }
+}
+
+function switchPage(id, silent) {
+  const p = roomData && roomData.pages.find((x) => x.id === id);
+  if (!p) return;
+  activePage = p;
+  activePageId = p.id;
+  selectedId = null;
+  hoveredId = null;
+  if (currentAction) cancelCurrentAction();
+  updateInspector();
+  renderPageBar();
+  if (!silent) toast('已切换到「' + p.name + '」');
+}
+
+function addPage() {
+  if (!canEdit) { toast('只读模式，无法新增页面', 'error'); return; }
+  const page = {
+    id: uid().replace(/^e_/, 'p_'),
+    name: pageNumberName(nextPageNumber()),
+    images: [],
+    annotations: [],
+  };
+  roomData.pages.push(page);
+  activePage = page;
+  activePageId = page.id;
+  selectedId = null;
+  updateInspector();
+  renderPageBar();
+  sendOp({ type: 'add-page', page: JSON.parse(JSON.stringify(page)) });
+  toast('已新增「' + page.name + '」', 'ok');
+}
+
+function renamePage(id) {
+  if (!canEdit) return;
+  const p = roomData.pages.find((x) => x.id === id);
+  if (!p) return;
+  const modal = openModal({
+    title: '重命名页面',
+    body: '<div class="field"><label class="f-label">页面名称</label><input type="text" id="pageNameInput" maxlength="30" value="' + esc(p.name) + '"></div>',
+    buttons: [{ label: '取消', value: false }, { label: '保存', value: true, primary: true }],
+  });
+  setTimeout(() => { const el = $('#pageNameInput'); if (el) { el.focus(); el.select(); } }, 40);
+  modal.then((ok) => {
+    if (!ok) return;
+    const name = $('#pageNameInput').value.trim();
+    if (!name) { toast('名称不能为空', 'error'); return; }
+    if (name === p.name) return;
+    p.name = name;
+    renderPageBar();
+    sendOp({ type: 'rename-page', pageId: id, name });
+  });
+}
+
+function deletePage(id) {
+  if (!canEdit) return;
+  if (roomData.pages.length <= 1) { toast('至少需要保留一个页面', 'error'); return; }
+  const p = roomData.pages.find((x) => x.id === id);
+  if (!p) return;
+  const modal = openModal({
+    title: '删除页面',
+    body: '<p>确定删除「' + esc(p.name) + '」吗？<br>该页的全部画布内容将一并删除，<b>无法恢复</b>。</p>',
+    buttons: [{ label: '取消', value: false }, { label: '删除', value: true, danger: true }],
+  });
+  modal.then((ok) => {
+    if (!ok) return;
+    const idx = roomData.pages.findIndex((x) => x.id === id);
+    if (idx < 0) return;
+    roomData.pages.splice(idx, 1);
+    if (activePageId === id) switchPage(roomData.pages[0].id, true);
+    renderPageBar();
+    sendOp({ type: 'delete-page', pageId: id, name: p.name });
+  });
+}
+
+// ---------- 用户显示名称 ----------
+function updateDisplayName(name) {
+  me.name = String(name).slice(0, 24);
+  localStorage.setItem('dj_user', JSON.stringify(me));
+  if (currentRoomId) socket.emit('update-user', { name: me.name });
+  // 本地立即刷新自己的成员条目（服务端广播随后到达）
+  const m = members.find((x) => x.userId === me.id);
+  if (m) m.name = me.name;
+  renderMembers();
+  toast('显示名称已更新为「' + me.name + '」', 'ok');
+}
+
+// ---------- 设置 ----------
+function openSettings() {
+  if (!roomData) return;
+  const roomSection = isAdmin
+    ? '<div class="field"><label class="f-label">手账本名称</label><input type="text" id="setName" maxlength="40" value="' + esc(roomData.name) + '"></div>'
+      + '<div class="field"><label class="f-label">访问密码（留空表示不修改；勾选下方可清除）</label><input type="password" id="setPass" placeholder="新密码"></div>'
+      + '<div class="field"><label class="f-label"><input type="checkbox" id="setClearPass" style="accent-color:var(--accent)"> 清除现有密码</label></div>'
+      + '<div class="field"><label class="f-label">编辑权限</label><div class="radio-row">'
+      + '<label><input type="radio" name="setPerm" value="editable"' + (roomData.editPermission !== 'readonly' ? ' checked' : '') + '> 可编辑</label>'
+      + '<label><input type="radio" name="setPerm" value="readonly"' + (roomData.editPermission === 'readonly' ? ' checked' : '') + '> 只读（仅创建者可编辑）</label>'
+      + '</div></div>'
+      + '<div class="field" style="border-top:1px solid var(--line);padding-top:12px"><button class="btn danger" id="setDeleteBtn">删除该手账本…</button></div>'
+    : '<div class="room-info-box">名称：' + esc(roomData.name) + '<br>权限：' + (roomData.editPermission === 'readonly' ? '只读' : '可编辑') + '<br>您不是创建者，无法修改房间设置。</div>';
+
+  const p = openModal({
+    title: '设置',
+    wide: true,
+    body: '<div class="field"><label class="f-label">我的显示名称（同步给协作者）</label><input type="text" id="myNameInput" maxlength="24" value="' + esc(me.name) + '"></div>'
+      + '<div style="border-top:1px solid var(--line);padding-top:12px;margin-top:14px">' + roomSection + '</div>',
+    buttons: [{ label: '取消', value: false }, { label: '保存', value: true, primary: true }],
+  });
+  const delBtn = $('#setDeleteBtn');
+  if (delBtn) delBtn.onclick = () => {
+    openModal({
+      title: '删除手账本',
+      body: '<p>确定删除「' + esc(roomData.name) + '」吗？<br>全部画布数据与操作历史将一并删除，<b>无法恢复</b>。</p>',
+      buttons: [{ label: '取消', value: false }, { label: '删除', value: true, danger: true }],
+    }).then(async (ok) => {
+      if (!ok) return;
+      try {
+        await fetchJSON('/api/rooms/' + roomData.id, { method: 'DELETE', body: JSON.stringify({ userId: me.id }) });
+        toast('手账本已删除', 'ok');
+        goHome();
+      } catch (e) { toast(e.message, 'error'); }
+    });
+  };
+  p.then(async (ok) => {
+    if (!ok) return;
+    // 我的显示名称（所有人可用）
+    const myName = $('#myNameInput').value.trim();
+    if (myName && myName !== me.name) updateDisplayName(myName);
+    if (!isAdmin) return;
+    // 房间设置（仅创建者）
+    const name = $('#setName').value.trim();
+    if (!name) { toast('名称不能为空', 'error'); return openSettings(); }
+    const body = {
+      userId: me.id,
+      name,
+      editPermission: document.querySelector('input[name=setPerm]:checked').value,
+    };
+    if ($('#setClearPass').checked) body.password = '';
+    else if ($('#setPass').value) body.password = $('#setPass').value;
+    try {
+      const res = await fetchJSON('/api/rooms/' + roomData.id, { method: 'PATCH', body: JSON.stringify(body) });
+      roomData.name = res.name;
+      roomData.editPermission = res.editPermission;
+      $('#roomName').textContent = res.name;
+      updatePermUI();
+      toast('设置已保存', 'ok');
+    } catch (e) { toast(e.message, 'error'); }
+  });
+}
+
+// ---------- 工具栏 / 快捷键 ----------
+function setTool(t) {
+  currentTool = t;
+  for (const b of document.querySelectorAll('#toolbar .tool-btn')) {
+    b.classList.toggle('active', b.dataset.tool === t);
+  }
+}
+
+function setupSwatches() {
+  const box = $('#swatches');
+  const colors = ['#37352f', '#e34f4f', '#f08a24', '#e0a800', '#58a63f', '#2f9e9e', '#3a7bd5', '#7a5cd6', '#d6548f', '#888888'];
+  box.innerHTML = colors.map((c) =>
+    '<button class="swatch' + (c === toolColor ? ' active' : '') + '" style="background:' + c + '" data-color="' + c + '" title="' + c + '"></button>'
+  ).join('');
+  for (const sw of box.querySelectorAll('.swatch')) {
+    sw.onclick = () => {
+      toolColor = sw.dataset.color;
+      for (const s of box.querySelectorAll('.swatch')) s.classList.remove('active');
+      sw.classList.add('active');
+    };
+  }
+}
+
+function bindUI() {
+  for (const b of document.querySelectorAll('#toolbar .tool-btn')) {
+    if (b.id === 'btnUploadImage' || b.id === 'btnClearAnno') continue;
+    b.onclick = () => setTool(b.dataset.tool);
+  }
+  $('#btnUploadImage').onclick = () => $('#imageInput').click();
+  $('#imageInput').onchange = (e) => {
+    const f = e.target.files[0];
+    if (f) addImageFromFile(f);
+    e.target.value = '';
+  };
+  $('#btnClearAnno').onclick = () => {
+    if (!canEdit || !roomData || !roomData.annotations.length) return;
+    openModal({
+      title: '清空标注层',
+      body: '<p>将删除全部笔迹、图形与文字（不影响图片层），确定吗？</p>',
+      buttons: [{ label: '取消', value: false }, { label: '清空', value: true, danger: true }],
+    }).then((ok) => {
+      if (!ok) return;
+      roomData.annotations = [];
+      selectedId = null;
+      updateInspector();
+      sendOp({ type: 'clear-annotations' });
+    });
+  };
+
+  $('#inspDelete').onclick = deleteSelected;
+  $('#inspDuplicate').onclick = duplicateSelected;
+  $('#inspFront').onclick = () => reorderSelected('front');
+  $('#inspBack').onclick = () => reorderSelected('back');
+
+  $('#btnBack').onclick = goHome;
+  $('#btnSettings').onclick = openSettings;
+  $('#btnExport').onclick = openExportModal;
+  $('#btnNewRoom').onclick = createRoomFlow;
+  $('#btnAddPage').onclick = addPage;
+
+  $('#zoomIn').onclick = () => {
+    const r = canvasWrap.getBoundingClientRect();
+    zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.2);
+  };
+  $('#zoomOut').onclick = () => {
+    const r = canvasWrap.getBoundingClientRect();
+    zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2);
+  };
+  $('#zoomFit').onclick = resetZoom;
+
+  // 侧栏收起 / 展开（记忆用户偏好）
+  const sidebar = $('#sidebar');
+  const applySidebarCollapsed = (collapsed) => {
+    sidebar.classList.toggle('collapsed', collapsed);
+    $('#btnSidebarToggle').textContent = collapsed ? '«' : '»';
+    localStorage.setItem('dj_sidebar_collapsed', collapsed ? '1' : '0');
+    resizeCanvas();
+  };
+  applySidebarCollapsed(localStorage.getItem('dj_sidebar_collapsed') === '1');
+  $('#btnSidebarToggle').onclick = () => applySidebarCollapsed(!sidebar.classList.contains('collapsed'));
+
+  for (const tabBtn of document.querySelectorAll('.tabs button')) {
+    tabBtn.onclick = () => {
+      if (sidebar.classList.contains('collapsed')) applySidebarCollapsed(false);
+      for (const b of document.querySelectorAll('.tabs button')) b.classList.remove('active');
+      tabBtn.classList.add('active');
+      $('#tab-history').classList.toggle('active', tabBtn.dataset.tab === 'history');
+      $('#tab-members').classList.toggle('active', tabBtn.dataset.tab === 'members');
+    };
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (!$('#modalRoot').classList.contains('hidden')) return;
+    const tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+    if (e.key === ' ') { spaceDown = true; e.preventDefault(); return; }
+    if (!roomData) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C') && selectedId) {
+      const el = findElement(selectedId);
+      if (el) { copyBuffer = el; toast('已复制元素，Ctrl+V 粘贴', 'ok'); }
+    }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V') && copyBuffer) {
+      e.preventDefault();
+      const clone = duplicateElement(copyBuffer);
+      if (clone.layer === 'image') { roomData.images.push(clone); ensureImage(clone); }
+      else roomData.annotations.push(clone);
+      selectedId = clone.id;
+      sendOp({ type: 'duplicate', elements: [clone] });
+      updateInspector();
+    }
+    else if (!e.ctrlKey && !e.metaKey && e.key === 'v') setTool('select');
+    else if (e.key === 'p') setTool('pen');
+    else if (e.key === 'e') setTool('eraser');
+  });
+  document.addEventListener('keyup', (e) => {
+    if (e.key === ' ') spaceDown = false;
+  });
+  window.addEventListener('blur', () => { spaceDown = false; });
+
+  document.addEventListener('paste', (e) => {
+    if (!currentRoomId || !canEdit || !roomData) return;
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const it of items) {
+      if (it.type && it.type.startsWith('image/')) {
+        e.preventDefault();
+        const f = it.getAsFile();
+        if (f) addImageFromFile(f);
+        return;
+      }
+    }
+  });
+}
+
+/* ==========================================================================
+   导出：高清 PNG（透明 / 白底）与 PDF（A4 分页，纯 JS 生成）
+   ========================================================================== */
+
+function renderExportCanvas(page, bgWhite, scale) {
+  const c = document.createElement('canvas');
+  c.width = LOGICAL_W * scale;
+  c.height = LOGICAL_H * scale;
+  const ctx = c.getContext('2d');
+  ctx.scale(scale, scale);
+  if (bgWhite) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+  }
+  for (const im of page.images) {
+    const img = imgCache.get(im.id);
+    if (!img) continue;
+    ctx.save();
+    ctx.translate(im.x, im.y);
+    ctx.rotate(im.rotation || 0);
+    ctx.drawImage(img, -im.width / 2, -im.height / 2, im.width, im.height);
+    ctx.restore();
+  }
+  for (const a of page.annotations) drawAnnotation(ctx, a, false);
+  return c;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+function whenImagesReady() {
+  const pending = [];
+  for (const page of roomData.pages) {
+    for (const im of page.images) {
+      if (!imgCache.has(im.id)) pending.push(im);
+    }
+  }
+  return Promise.all(pending.map((im) => new Promise((resolve) => {
+    const check = () => {
+      if (imgCache.has(im.id)) resolve();
+      else setTimeout(check, 60);
+    };
+    check();
+  })));
+}
+
+async function exportPNG(transparent) {
+  toast('正在生成高清 PNG…');
+  await whenImagesReady();
+  const c = renderExportCanvas(activePage, !transparent, 2);
+  c.toBlob((blob) => {
+    if (blob) downloadBlob(blob, (roomData.name || '手账') + '-' + activePage.name + '.png');
+  }, 'image/png');
+}
+
+function base64ToHex(b64) {
+  const bin = atob(b64);
+  let hex = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bin.length; i += chunk) {
+    let s = '';
+    const end = Math.min(bin.length, i + chunk);
+    for (let j = i; j < end; j++) s += bin.charCodeAt(j).toString(16).padStart(2, '0');
+    hex += s + '\n';
+  }
+  return hex;
+}
+
+async function exportPDF() {
+  toast('正在生成 PDF…（共 ' + roomData.pages.length + ' 页）');
+  await whenImagesReady();
+  const pageW = 595.28, pageH = 841.89; // A4（pt）
+  const scale = pageW / LOGICAL_W;
+
+  const objs = {};
+  let nextId = 1;
+  objs[nextId++] = '<< /Type /Catalog /Pages 2 0 R >>';
+
+  // 每个手账页渲染成一张 JPEG，作为 PDF 的一页 A4
+  const imgIds = [];
+  for (const page of roomData.pages) {
+    const c = renderExportCanvas(page, true, 1.5);
+    const hex = base64ToHex(c.toDataURL('image/jpeg', 0.92).split(',')[1]);
+    imgIds.push(nextId);
+    objs[nextId++] = '<< /Type /XObject /Subtype /Image /Width ' + LOGICAL_W + ' /Height ' + LOGICAL_H
+      + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length ' + (hex.length + 1) + ' >>\nstream\n'
+      + hex + '>\nendstream';
+  }
+
+  const kids = [];
+  for (let i = 0; i < roomData.pages.length; i++) {
+    const stream = 'q\n' + scale + ' 0 0 ' + scale + ' 0 0 cm\n/Im' + i + ' Do\nQ';
+    const contentId = nextId++;
+    objs[contentId] = '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream';
+    const pageId = nextId++;
+    objs[pageId] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pageW + ' ' + pageH + ']'
+      + ' /Resources << /XObject << /Im' + i + ' ' + imgIds[i] + ' 0 R >> >> /Contents ' + contentId + ' 0 R >>';
+    kids.push(pageId);
+  }
+  objs[2] = '<< /Type /Pages /Kids [' + kids.map((id) => id + ' 0 R').join(' ') + '] /Count ' + kids.length + ' >>';
+
+  let out = '%PDF-1.4\n';
+  const offsets = [0];
+  for (let id = 1; id < nextId; id++) {
+    offsets[id] = out.length;
+    out += id + ' 0 obj\n' + objs[id] + '\nendobj\n';
+  }
+  const xrefStart = out.length;
+  out += 'xref\n0 ' + nextId + '\n0000000000 65535 f \n';
+  for (let id = 1; id < nextId; id++) {
+    out += String(offsets[id]).padStart(10, '0') + ' 00000 n \n';
+  }
+  out += 'trailer\n<< /Size ' + nextId + ' /Root 1 0 R >>\nstartxref\n' + xrefStart + '\n%%EOF';
+
+  downloadBlob(new Blob([out], { type: 'application/pdf' }), (roomData.name || '手账') + '.pdf');
+  toast('PDF 已导出', 'ok');
+}
+
+function openExportModal() {
+  if (!roomData) return;
+  openModal({
+    title: '导出',
+    body: '<p style="margin-bottom:12px">PNG 导出当前页「' + esc(activePage.name) + '」；PDF 导出全部 ' + roomData.pages.length + ' 个页面（每页一张 A4，不含选中框与光标）：</p>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:8px">'
+      + '<button class="btn" id="expPngT">PNG · 透明背景</button>'
+      + '<button class="btn" id="expPngW">PNG · 白色背景</button>'
+      + '<button class="btn" id="expPdf">PDF · A4 分页</button>'
+      + '</div>',
+    buttons: [{ label: '关闭', value: false }],
+  });
+  $('#expPngT').onclick = () => exportPNG(true);
+  $('#expPngW').onclick = () => exportPNG(false);
+  $('#expPdf').onclick = exportPDF;
+}
+
+/* ==========================================================================
+   启动
+   ========================================================================== */
+function init() {
+  setupSwatches();
+  bindUI();
+  setupCanvas();
+  loadRooms();
+  initIDB().catch(() => {});
+}
+
+init();
+</script>
+</body>
+</html>

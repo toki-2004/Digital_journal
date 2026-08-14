@@ -1,0 +1,15 @@
+# 依赖
+node_modules/
+
+# 本地运行数据（手账内容，不上传）
+data/
+
+# 运行日志 / PID
+server.log
+server-error.log
+server.pid
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.tmp
