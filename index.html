@@ -1639,10 +1639,11 @@ function renderTimeline() {
     tl.innerHTML = '<div class="tl-empty">暂无操作记录<br>绘制、上传图片等操作会显示在这里</div>';
     return;
   }
-  tl.innerHTML = roomData.history.map((h) =>
+  // 最新的记录显示在最上方
+  tl.innerHTML = roomData.history.slice().reverse().map((h) =>
     '<div class="tl-item"><div class="tl-text">[' + esc(h.time) + '] ' + esc(h.text) + '</div></div>'
   ).join('');
-  tl.scrollTop = tl.scrollHeight;
+  tl.scrollTop = 0;
 }
 
 // ---------- 成员与光标 ----------
