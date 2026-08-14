@@ -199,6 +199,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .float-inspector .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
 .float-inspector .rot-hint { font-size: 11px; color: var(--muted); padding: 0 4px; white-space: nowrap; }
 .float-inspector .lock-note { font-size: 11px; color: var(--danger); padding: 0 6px; }
+.float-inspector .creator-note { font-size: 11px; color: var(--muted); padding: 0 4px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .readonly-banner {
   position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
   background: #fbf3d9; color: #8a6d1c; font-size: 12px; border-radius: 20px;
@@ -468,6 +469,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
           <div class="sep"></div>
           <span class="rot-hint hidden" id="inspRotHint">拖动上方圆点可旋转</span>
           <span class="lock-note hidden" id="inspLockNote"></span>
+          <span class="creator-note hidden" id="inspCreator"></span>
         </div>
       </div>
       <div class="readonly-banner hidden" id="readonlyBanner">只读模式：当前仅创建者可编辑</div>
@@ -941,6 +943,9 @@ let panX = 0, panY = 0; // 平移偏移（CSS 像素）
 const activePointers = new Map();
 let pinch = null;
 let spaceDown = false;
+let pressTimer = null;   // 触屏长按定时器
+let pressInfo = null;    // 触屏按下时的候选元素
+let longPressActive = false;
 const imgCache = new Map(); // imageId -> HTMLImageElement
 
 function findElement(id) {
@@ -1617,6 +1622,9 @@ function onPointerDown(e) {
   activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   // 第二根手指落下：取消当前操作，进入双指缩放/平移
   if (activePointers.size === 2) {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    pressInfo = null;
+    longPressActive = false;
     cancelCurrentAction();
     const pts = Array.from(activePointers.values());
     pinch = {
@@ -1652,7 +1660,23 @@ function onPointerDown(e) {
     const el = hitTest(p);
     if (el) {
       select(el.id);
-      startElementAction(p, el);
+      if (e.pointerType === 'touch') {
+        // 移动端：先等待长按或拖动判定，避免误触发拖动
+        pressInfo = { x: e.clientX, y: e.clientY, el };
+        pressTimer = setTimeout(() => {
+          pressTimer = null;
+          const info = pressInfo;
+          pressInfo = null;
+          const cur = info && findElement(info.el.id);
+          if (cur) {
+            longPressActive = true;
+            showElementMenu(info.x, info.y, cur);
+            if (navigator.vibrate) navigator.vibrate(15);
+          }
+        }, 500);
+      } else {
+        startElementAction(p, el);
+      }
     } else {
       selectedId = null;
       updateInspector();
@@ -1687,6 +1711,16 @@ function onPointerMove(e) {
     return;
   }
   const p = toLogical(e);
+  // 移动端：手指移动超过阈值 -> 由“等待长按”转为拖动元素
+  if (pressInfo) {
+    if (Math.hypot(e.clientX - pressInfo.x, e.clientY - pressInfo.y) > 10) {
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      const el = findElement(pressInfo.el.id);
+      pressInfo = null;
+      longPressActive = false;
+      if (el && currentTool === 'select') startElementAction(p, el);
+    }
+  }
   if (currentRoomId && Date.now() - lastCursorSent > 40) {
     lastCursorSent = Date.now();
     socket.emit('cursor', { roomId: currentRoomId, x: Math.round(p.x), y: Math.round(p.y) });
@@ -1782,6 +1816,9 @@ function onPointerMove(e) {
 function onPointerUp(e) {
   activePointers.delete(e.pointerId);
   if (activePointers.size < 2) pinch = null;
+  if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+  if (longPressActive) { longPressActive = false; pressInfo = null; return; }
+  pressInfo = null;
   const act = currentAction;
   if (!act) return;
   if (act.type === 'pan') { currentAction = null; return; }
@@ -2038,6 +2075,16 @@ function updateInspector() {
   insp.classList.remove('hidden');
   const sel = findElement(selectedId);
   $('#inspRotHint').classList.toggle('hidden', !(sel && sel.kind === 'image'));
+  const cr = $('#inspCreator');
+  if (sel && sel.createdBy) {
+    cr.textContent = '创建：' + sel.createdBy.name + ' · ' + formatElementTime(sel.createdAt);
+    cr.classList.remove('hidden');
+  } else if (sel) {
+    cr.textContent = '创建：旧数据（未知）';
+    cr.classList.remove('hidden');
+  } else {
+    cr.classList.add('hidden');
+  }
   const lock = locks.get(selectedId);
   const note = $('#inspLockNote');
   if (lock && lock.userId !== me.id) {
