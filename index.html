@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
 <title>拾光手账 · 实时协同电子手账</title>
 <style>
 /* ==========================================================================
@@ -1623,6 +1624,7 @@ function onPointerDown(e) {
       zoom,
       mx: (pts[0].x + pts[1].x) / 2,
       my: (pts[0].y + pts[1].y) / 2,
+      startLogical: toLogical({ clientX: (pts[0].x + pts[1].x) / 2, clientY: (pts[0].y + pts[1].y) / 2 }),
     };
     canvasWrap.setPointerCapture(e.pointerId);
     return;
@@ -1642,7 +1644,10 @@ function onPointerDown(e) {
   if (currentTool === 'pen') startPen(p);
   else if (currentTool === 'eraser') startErase(p);
   else if (currentTool === 'line' || currentTool === 'rect' || currentTool === 'circle' || currentTool === 'arrow') startShape(p);
-  else if (currentTool === 'text') placeText(p);
+  else if (currentTool === 'text') {
+    e.preventDefault(); // 阻止浏览器默认焦点转移（否则 PC 上输入框会立刻失焦）
+    placeText(p);
+  }
   else {
     const el = hitTest(p);
     if (el) {
@@ -1668,15 +1673,15 @@ function onPointerMove(e) {
     const wr = canvasWrap.getBoundingClientRect();
     const sx = mx - wr.left;
     const sy = my - wr.top;
-    const logicalBefore = toLogical({ clientX: mx, clientY: my });
     zoom = clamp(pinch.zoom * (dist / pinch.dist), 0.2, 4);
     viewScale = fitScale * zoom;
     const cw = LOGICAL_W * viewScale;
     const ch = LOGICAL_H * viewScale;
     const wrapW = canvasWrap.clientWidth;
     const wrapH = canvasWrap.clientHeight;
-    panX = sx - (wrapW - cw) / 2 - logicalBefore.x * viewScale;
-    panY = sy - (wrapH - ch) / 2 - logicalBefore.y * viewScale;
+    // 以手势起点中点的逻辑点为锚：手指移动 -> 画布跟随（平移）；距离变化 -> 缩放
+    panX = sx - (wrapW - cw) / 2 - pinch.startLogical.x * viewScale;
+    panY = sy - (wrapH - ch) / 2 - pinch.startLogical.y * viewScale;
     layoutCanvas();
     updateZoomUI();
     return;
@@ -1994,7 +1999,8 @@ function placeText(p) {
   el.style.width = Math.max(120, fontSize * 4 * viewScale) + 'px';
   el.rows = 1;
   canvasWrap.appendChild(el);
-  el.focus();
+  // 延迟聚焦：等浏览器当前事件的默认动作（mousedown 焦点转移）结束后再聚焦
+  setTimeout(() => { if (document.body.contains(el)) el.focus(); }, 0);
   let committed = false;
   const commit = () => {
     if (committed) return;
