@@ -483,6 +483,13 @@ function pageOf(room, op) {
   return room.pages[0];
 }
 
+/** 元素层级值：新元素无 z 时，图片默认在 0..n，标注默认在 100000..（保持原“图片在下”语义） */
+function elementZ(el, images, annotations) {
+  if (typeof el.z === 'number') return el.z;
+  if (el.layer === 'image') return images.indexOf(el);
+  return 100000 + annotations.indexOf(el);
+}
+
 function pushHistory(room, op, user) {
   let pageName = '';
   if (ELEMENT_OPS.has(op.type)) {
@@ -591,14 +598,19 @@ function applyOp(room, op, user) {
       return null;
     }
     case 'reorder': {
-      const source = op.layer === 'images' ? images : annotations;
       const ids = new Set(op.ids || []);
       if (!ids.size) return null;
-      const selected = source.filter((e) => ids.has(e.id));
-      const rest = source.filter((e) => !ids.has(e.id));
-      const merged = op.mode === 'back' ? selected.concat(rest) : rest.concat(selected);
-      if (op.layer === 'images') page.images = merged;
-      else page.annotations = merged;
+      const all = images.concat(annotations);
+      const targets = all.filter((e) => ids.has(e.id));
+      if (!targets.length) return null;
+      let min = Infinity, max = -Infinity;
+      for (const e of all) {
+        const z = elementZ(e, images, annotations);
+        min = Math.min(min, z);
+        max = Math.max(max, z);
+      }
+      const z = op.mode === 'back' ? min - 1 : max + 1;
+      for (const e of targets) e.z = z;
       return null;
     }
     case 'clear-annotations': {

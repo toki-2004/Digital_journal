@@ -1093,6 +1093,22 @@ function loop() {
   rafId = requestAnimationFrame(loop);
 }
 
+/** 元素层级值：无 z 时图片默认 0..n、标注默认 100000..（保持原有“图片在下”语义） */
+function elementZ(el, images, annotations) {
+  if (typeof el.z === 'number') return el.z;
+  if (el.layer === 'image') return images.indexOf(el);
+  return 100000 + annotations.indexOf(el);
+}
+
+/** 当前页所有元素按 z 排序后的渲染顺序 */
+function renderOrder() {
+  if (!roomData || !activePage) return [];
+  const images = activePage.images;
+  const annotations = activePage.annotations;
+  return images.concat(annotations)
+    .sort((a, b) => elementZ(a, images, annotations) - elementZ(b, images, annotations));
+}
+
 // ---------- 渲染 ----------
 function ensureImage(el) {
   if (imgCache.has(el.id) || !el.src) return;
@@ -1119,11 +1135,14 @@ function draw() {
   }
   if (!roomData) return;
 
-  for (const im of roomData.images) {
-    ensureImage(im);
-    drawImageEl(ctx, im);
+  for (const el of renderOrder()) {
+    if (el.kind === 'image') {
+      ensureImage(el);
+      drawImageEl(ctx, el);
+    } else {
+      drawAnnotation(ctx, el);
+    }
   }
-  for (const a of roomData.annotations) drawAnnotation(ctx, a);
 
   if (hoveredId && hoveredId !== selectedId) drawSelectionOutline(ctx, hoveredId, 'rgba(47,111,235,.4)');
   if (selectedId) drawSelectionOutline(ctx, selectedId, '#2f6feb');
@@ -1404,11 +1423,10 @@ function hitAnnotation(p, a) {
 
 function hitTest(p) {
   if (!roomData) return null;
-  for (let i = roomData.annotations.length - 1; i >= 0; i--) {
-    if (hitAnnotation(p, roomData.annotations[i])) return roomData.annotations[i];
-  }
-  for (let i = roomData.images.length - 1; i >= 0; i--) {
-    if (hitImage(p, roomData.images[i])) return roomData.images[i];
+  const list = renderOrder();
+  for (let i = list.length - 1; i >= 0; i--) {
+    const el = list[i];
+    if (el.kind === 'image' ? hitImage(p, el) : hitAnnotation(p, el)) return el;
   }
   return null;
 }
@@ -1543,13 +1561,18 @@ function applyPersistedOp(op) {
       }
       break;
     case 'reorder': {
-      const arr = op.layer === 'images' ? page.images : page.annotations;
       const ids = new Set(op.ids || []);
-      const sel = arr.filter((e) => ids.has(e.id));
-      const rest = arr.filter((e) => !ids.has(e.id));
-      const merged = op.mode === 'back' ? sel.concat(rest) : rest.concat(sel);
-      if (op.layer === 'images') page.images = merged;
-      else page.annotations = merged;
+      const images = page.images;
+      const annotations = page.annotations;
+      const targets = images.concat(annotations).filter((e) => ids.has(e.id));
+      let min = Infinity, max = -Infinity;
+      for (const e of images.concat(annotations)) {
+        const z = elementZ(e, images, annotations);
+        min = Math.min(min, z);
+        max = Math.max(max, z);
+      }
+      const z = op.mode === 'back' ? min - 1 : max + 1;
+      for (const e of targets) e.z = z;
       break;
     }
     case 'clear-annotations':
@@ -2296,14 +2319,22 @@ function duplicateSelected() {
 function reorderSelected(mode) {
   const el = selectedId && findElement(selectedId);
   if (!el || !canEdit) return;
-  const layer = el.layer === 'image' ? 'images' : 'annotations';
-  const arr = layer === 'images' ? roomData.images : roomData.annotations;
-  const sel = arr.filter((e) => e.id === el.id);
-  const rest = arr.filter((e) => e.id !== el.id);
-  const merged = mode === 'back' ? sel.concat(rest) : rest.concat(sel);
-  if (layer === 'images') roomData.images = merged;
-  else roomData.annotations = merged;
-  sendOp({ type: 'reorder', layer, ids: [el.id], mode });
+  // 全局层级：图片与标注统一排序，图片也可以浮到笔迹之上
+  setElementZ(el, mode);
+  sendOp({ type: 'reorder', ids: [el.id], mode });
+}
+
+function setElementZ(el, mode) {
+  if (!activePage) return;
+  const images = activePage.images;
+  const annotations = activePage.annotations;
+  let min = Infinity, max = -Infinity;
+  for (const e of images.concat(annotations)) {
+    const z = elementZ(e, images, annotations);
+    min = Math.min(min, z);
+    max = Math.max(max, z);
+  }
+  el.z = mode === 'back' ? min - 1 : max + 1;
 }
 
 // ---------- 图片上传 ----------
@@ -2830,16 +2861,21 @@ function renderExportCanvas(page, bgWhite, scale) {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
   }
-  for (const im of page.images) {
-    const img = imgCache.get(im.id);
-    if (!img) continue;
-    ctx.save();
-    ctx.translate(im.x, im.y);
-    ctx.rotate(im.rotation || 0);
-    ctx.drawImage(img, -im.width / 2, -im.height / 2, im.width, im.height);
-    ctx.restore();
+  const ordered = page.images.concat(page.annotations)
+    .sort((a, b) => elementZ(a, page.images, page.annotations) - elementZ(b, page.images, page.annotations));
+  for (const el of ordered) {
+    if (el.kind === 'image') {
+      const img = imgCache.get(el.id);
+      if (!img) continue;
+      ctx.save();
+      ctx.translate(el.x, el.y);
+      ctx.rotate(el.rotation || 0);
+      ctx.drawImage(img, -el.width / 2, -el.height / 2, el.width, el.height);
+      ctx.restore();
+    } else {
+      drawAnnotation(ctx, el, false);
+    }
   }
-  for (const a of page.annotations) drawAnnotation(ctx, a, false);
   return c;
 }
 
