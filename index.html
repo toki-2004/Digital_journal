@@ -369,8 +369,9 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
   .room-title #roomName { max-width: 130px; }
   .home-header { padding: 20px 14px 12px; }
   .room-grid { padding: 0 14px 30px; }
-  .page-bar { bottom: 10px; }
-  .zoom-pill { right: 12px; bottom: 12px; }
+  .page-bar { bottom: 56px; }
+  .zoom-pill { right: 12px; bottom: 58px; }
+  .float-inspector { bottom: 104px; }
 }
 </style>
 </head>
@@ -1145,6 +1146,13 @@ function drawImageEl(ctx, im) {
 
 function drawAnnotation(ctx, a, withLock = true) {
   ctx.save();
+  if (a.rotation) {
+    // 标注元素同样支持旋转：围绕自身中心旋转后再绘制
+    const c = elementCenter(a);
+    ctx.translate(c.x, c.y);
+    ctx.rotate(a.rotation);
+    ctx.translate(-c.x, -c.y);
+  }
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = a.color;
@@ -1216,13 +1224,18 @@ function drawLockBadge(ctx, id) {
   ctx.restore();
 }
 
-function bboxOf(id) {
-  const el = findElement(id);
-  if (!el) return { x: 0, y: 0, w: 0, h: 0 };
-  if (el.kind === 'image') {
-    const d = Math.max(el.width, el.height);
-    return { x: el.x - d / 2, y: el.y - d / 2, w: d, h: d };
-  }
+function textMetrics(el) {
+  const fs = el.fontSize || 26;
+  ctx2d.font = fs + 'px "PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif';
+  const lines = String(el.text || '').split('\n');
+  let w = 0;
+  for (const line of lines) w = Math.max(w, ctx2d.measureText(line).width);
+  return { w, h: lines.length * fs * 1.25 };
+}
+
+/** 元素未旋转时的包围盒（世界坐标） */
+function bboxUnrotated(el) {
+  if (el.kind === 'image') return { x: el.x - el.width / 2, y: el.y - el.height / 2, w: el.width, h: el.height };
   if (el.kind === 'circle') return { x: el.cx - el.r, y: el.cy - el.r, w: el.r * 2, h: el.r * 2 };
   if (el.kind === 'pen') {
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
@@ -1230,54 +1243,74 @@ function bboxOf(id) {
       x1 = Math.min(x1, pt.x); y1 = Math.min(y1, pt.y);
       x2 = Math.max(x2, pt.x); y2 = Math.max(y2, pt.y);
     }
-    return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+    return { x: x1, y: y1, w: Math.max(0, x2 - x1), h: Math.max(0, y2 - y1) };
   }
   if (el.kind === 'text') {
-    ctx2d.font = (el.fontSize || 26) + 'px "PingFang SC","Microsoft YaHei",sans-serif';
-    const lines = String(el.text || '').split('\n');
-    let w = 0;
-    for (const line of lines) w = Math.max(w, ctx2d.measureText(line).width);
-    return { x: el.x, y: el.y, w: w, h: lines.length * (el.fontSize || 26) * 1.25 };
+    const m = textMetrics(el);
+    return { x: el.x, y: el.y, w: m.w, h: m.h };
   }
   return { x: Math.min(el.x1, el.x2), y: Math.min(el.y1, el.y2), w: Math.abs(el.x2 - el.x1), h: Math.abs(el.y2 - el.y1) };
+}
+
+/** 元素旋转中心（世界坐标） */
+function elementCenter(el) {
+  if (el.kind === 'image') return { x: el.x, y: el.y };
+  if (el.kind === 'circle') return { x: el.cx, y: el.cy };
+  const bb = bboxUnrotated(el);
+  return { x: bb.x + bb.w / 2, y: bb.y + bb.h / 2 };
+}
+
+/** 旋转后的轴对齐包围盒（用于锁定标记等） */
+function bboxOf(id) {
+  const el = findElement(id);
+  if (!el) return { x: 0, y: 0, w: 0, h: 0 };
+  const bb = bboxUnrotated(el);
+  if (!el.rotation) return bb;
+  const c = elementCenter(el);
+  const cos = Math.cos(el.rotation), sin = Math.sin(el.rotation);
+  const xs = [], ys = [];
+  for (const [px, py] of [[bb.x, bb.y], [bb.x + bb.w, bb.y], [bb.x, bb.y + bb.h], [bb.x + bb.w, bb.y + bb.h]]) {
+    xs.push(c.x + (px - c.x) * cos - (py - c.y) * sin);
+    ys.push(c.y + (px - c.x) * sin + (py - c.y) * cos);
+  }
+  const x1 = Math.min(...xs), y1 = Math.min(...ys);
+  return { x: x1, y: y1, w: Math.max(...xs) - x1, h: Math.max(...ys) - y1 };
 }
 
 function drawSelectionOutline(ctx, id, color) {
   const el = findElement(id);
   if (!el) return;
+  const c = elementCenter(el);
+  let hw, hh;
+  if (el.kind === 'image') { hw = el.width / 2; hh = el.height / 2; }
+  else { const bb = bboxUnrotated(el); hw = bb.w / 2; hh = bb.h / 2; }
   ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.rotate(el.rotation || 0);
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.6 / Math.max(1, viewScale);
   ctx.setLineDash([6, 4]);
-  if (el.kind === 'image') {
-    ctx.translate(el.x, el.y);
-    ctx.rotate(el.rotation || 0);
-    const hw = el.width / 2, hh = el.height / 2;
-    ctx.strokeRect(-hw - 3, -hh - 3, el.width + 6, el.height + 6);
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo(0, -hh - 4);
-    ctx.lineTo(0, -hh - 26);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(0, -hh - 30, 9, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-    ctx.stroke();
-    ctx.font = '15px serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#2f6feb';
-    ctx.fillText('↻', 0, -hh - 30);
-    const hs = 7;
-    ctx.fillStyle = '#fff';
-    for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
-      ctx.fillRect(sx * hw - hs / 2, sy * hh - hs / 2, hs, hs);
-      ctx.strokeRect(sx * hw - hs / 2, sy * hh - hs / 2, hs, hs);
-    }
-  } else {
-    const bb = bboxOf(id);
-    ctx.strokeRect(bb.x - 4, bb.y - 4, bb.w + 8, bb.h + 8);
+  ctx.strokeRect(-hw - 3, -hh - 3, hw * 2 + 6, hh * 2 + 6);
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(0, -hh - 4);
+  ctx.lineTo(0, -hh - 26);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, -hh - 30, 9, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = '15px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#2f6feb';
+  ctx.fillText('↻', 0, -hh - 30);
+  const hs = 7;
+  ctx.fillStyle = '#fff';
+  for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+    ctx.fillRect(sx * hw - hs / 2, sy * hh - hs / 2, hs, hs);
+    ctx.strokeRect(sx * hw - hs / 2, sy * hh - hs / 2, hs, hs);
   }
   ctx.restore();
 }
@@ -1327,33 +1360,46 @@ function hitImage(p, im) {
 }
 
 /** 判断点是否落在图片的旋转手柄区域（图片正上方） */
-function isNearRotateHandle(p, im) {
-  const l = toLocal(p, im);
-  const hh = im.height / 2;
+function isNearRotateHandle(p, el) {
+  const l = toLocal(p, el);
+  const hh = el.kind === 'image' ? el.height / 2 : bboxUnrotated(el).h / 2;
   return Math.abs(l.x) <= 15 && l.y <= -hh && l.y >= -hh - 44;
 }
 
 function hitAnnotation(p, a) {
+  const l = toLocal(p, a);
+  const c = elementCenter(a);
   const tol = Math.max(8, (a.width || 2) + 4);
+  let hit = false;
   switch (a.kind) {
-    case 'pen':
-      return a.points.length >= 2 && distToPolyline(p, a.points) <= tol;
+    case 'pen': {
+      if (a.points.length < 2) return false;
+      const pts = a.points.map((pt) => ({ x: pt.x - c.x, y: pt.y - c.y }));
+      hit = distToPolyline(l, pts) <= tol;
+      break;
+    }
     case 'line':
     case 'arrow':
-      return distToSegment(p.x, p.y, a.x1, a.y1, a.x2, a.y2) <= tol;
+      hit = distToSegment(l.x, l.y, a.x1 - c.x, a.y1 - c.y, a.x2 - c.x, a.y2 - c.y) <= tol;
+      break;
     case 'rect': {
-      const x = Math.min(a.x1, a.x2), y = Math.min(a.y1, a.y2);
+      const x = Math.min(a.x1, a.x2) - c.x, y = Math.min(a.y1, a.y2) - c.y;
       const w = Math.abs(a.x2 - a.x1), h = Math.abs(a.y2 - a.y1);
-      return p.x >= x - tol && p.x <= x + w + tol && p.y >= y - tol && p.y <= y + h + tol;
+      hit = l.x >= x - tol && l.x <= x + w + tol && l.y >= y - tol && l.y <= y + h + tol;
+      break;
     }
     case 'circle':
-      return Math.hypot(p.x - a.cx, p.y - a.cy) <= a.r + tol;
+      hit = Math.hypot(l.x, l.y) <= a.r + tol;
+      break;
     case 'text': {
-      const bb = bboxOf(a.id);
-      return p.x >= bb.x - 4 && p.x <= bb.x + bb.w + 4 && p.y >= bb.y - 4 && p.y <= bb.y + bb.h + 4;
+      const bb = bboxUnrotated(a);
+      hit = l.x >= bb.x - c.x - 4 && l.x <= bb.x - c.x + bb.w + 4
+        && l.y >= bb.y - c.y - 4 && l.y <= bb.y - c.y + bb.h + 4;
+      break;
     }
   }
-  return false;
+  if (hit) return true;
+  return isNearRotateHandle(p, a); // 旋转手柄区域也可点选
 }
 
 function hitTest(p) {
@@ -1368,7 +1414,8 @@ function hitTest(p) {
 }
 
 function toLocal(p, el) {
-  const dx = p.x - el.x, dy = p.y - el.y;
+  const c = elementCenter(el);
+  const dx = p.x - c.x, dy = p.y - c.y;
   const cos = Math.cos(-(el.rotation || 0)), sin = Math.sin(-(el.rotation || 0));
   return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
 }
@@ -1749,7 +1796,7 @@ function onPointerMove(e) {
       const lock = el ? locks.get(el.id) : null;
       let cur = 'default';
       if (lock && lock.userId !== me.id) cur = 'not-allowed';
-      else if (el && el.kind === 'image' && isNearRotateHandle(p, el)) cur = 'grab';
+      else if (el && isNearRotateHandle(p, el)) cur = 'grab';
       else if (el) cur = 'move';
       canvasEl.style.cursor = cur;
     }
@@ -1790,20 +1837,29 @@ function onPointerMove(e) {
     const startDist = Math.max(24, Math.hypot(sl.x, sl.y));
     const d = (sx * l.x + sy * l.y) - (sx * sl.x + sy * sl.y);
     const factor = clamp(1 + d / startDist, 0.15, 8);
-    el.width = Math.max(24, act.snapshot.width * factor);
-    el.height = Math.max(24, act.snapshot.height * factor);
+    const tmp = JSON.parse(JSON.stringify(act.snapshot));
+    scaleElement(tmp, factor);
+    Object.assign(el, tmp);
     act.moved = true;
-    sendTransient({ type: 'image-transform', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
+    if (el.kind === 'image') {
+      sendTransient({ type: 'image-transform', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
+    } else {
+      sendTransient({ type: 'annotation-transform', element: JSON.parse(JSON.stringify(el)) });
+    }
   } else if (act.type === 'rotate') {
     const el = findElement(act.id);
     if (!el) return;
-    // 以图片中心为基准直接算屏幕角度，避免旋转过程中坐标反馈漂移
-    const cx = act.snapshot.x, cy = act.snapshot.y;
+    // 以元素中心为基准直接算屏幕角度，避免旋转过程中坐标反馈漂移
+    const cx = act.center.x, cy = act.center.y;
     const ang = Math.atan2(p.y - cy, p.x - cx);
     const startAng = Math.atan2(act.startY - cy, act.startX - cx);
-    el.rotation = act.snapshot.rotation + (ang - startAng);
+    el.rotation = (act.snapshot.rotation || 0) + (ang - startAng);
     act.moved = true;
-    sendTransient({ type: 'image-transform', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
+    if (el.kind === 'image') {
+      sendTransient({ type: 'image-transform', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
+    } else {
+      sendTransient({ type: 'annotation-transform', element: JSON.parse(JSON.stringify(el)) });
+    }
   } else if (act.type === 'shape') {
     const el = act.element;
     if (el.kind === 'circle') {
@@ -1913,23 +1969,24 @@ function startElementAction(p, el) {
     return;
   }
   const snapshot = JSON.parse(JSON.stringify(el));
-  const act = { type: 'move', id: el.id, startX: p.x, startY: p.y, snapshot, moved: false };
+  const act = { type: 'move', id: el.id, startX: p.x, startY: p.y, snapshot, moved: false, center: elementCenter(el) };
   currentAction = act;
 
-  if (el.kind === 'image') {
-    const local = toLocal(p, el);
-    const hw = el.width / 2, hh = el.height / 2;
-    if (Math.hypot(local.x, local.y + hh + 30) < 14) {
-      act.type = 'rotate';
-      canvasEl.style.cursor = 'grab';
-    } else {
-      for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
-        if (Math.hypot(local.x - sx * hw, local.y - sy * hh) < 16) {
-          act.type = 'resize';
-          act.corner = [sx, sy];
-          canvasEl.style.cursor = 'nwse-resize';
-          break;
-        }
+  // 所有元素（图片与标注）统一支持：拖动移动、角点缩放、上方圆点旋转
+  const local = toLocal(p, el);
+  let hw, hh;
+  if (el.kind === 'image') { hw = el.width / 2; hh = el.height / 2; }
+  else { const bb = bboxUnrotated(el); hw = bb.w / 2; hh = bb.h / 2; }
+  if (Math.hypot(local.x, local.y + hh + 30) < 14) {
+    act.type = 'rotate';
+    canvasEl.style.cursor = 'grab';
+  } else {
+    for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+      if (Math.hypot(local.x - sx * hw, local.y - sy * hh) < 16) {
+        act.type = 'resize';
+        act.corner = [sx, sy];
+        canvasEl.style.cursor = 'nwse-resize';
+        break;
       }
     }
   }
@@ -1958,7 +2015,7 @@ function startPen(p) {
   const el = {
     id: uid(), kind: 'pen', layer: 'annotation',
     color: toolColor, width: Number($('#strokeWidth').value),
-    points: [{ x: p.x, y: p.y }],
+    points: [{ x: p.x, y: p.y }], rotation: 0,
   };
   stampElement(el);
   roomData.annotations.push(el);
@@ -1970,6 +2027,7 @@ function startShape(p) {
   if (!canEdit) { toast('只读模式，无法绘制', 'error'); return; }
   const width = Number($('#strokeWidth').value);
   const base = { id: uid(), kind: currentTool, layer: 'annotation', color: toolColor, width };
+  base.rotation = 0;
   let el;
   if (currentTool === 'circle') el = Object.assign(base, { cx: p.x, cy: p.y, r: 0 });
   else el = Object.assign(base, { x1: p.x, y1: p.y, x2: p.x, y2: p.y });
@@ -1985,9 +2043,9 @@ function startErase(p) {
   canvasEl.style.cursor = 'crosshair';
 }
 
-function nearEraser(pt, act) {
-  const r = act.radius;
-  const pts = act.points;
+function nearEraser(pt, pathPts, radius) {
+  const r = radius;
+  const pts = pathPts;
   for (let i = 0; i < pts.length - 1; i++) {
     if (distToSegment(pt.x, pt.y, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y) <= r) return true;
   }
@@ -1996,19 +2054,22 @@ function nearEraser(pt, act) {
 
 function eraseAffects(a, act) {
   const r = act.radius;
+  const c = elementCenter(a);
   for (const pt of act.points) {
+    const l = toLocal(pt, a); // 把橡皮擦轨迹变换到元素局部坐标系（含旋转）
     if (a.kind === 'line' || a.kind === 'arrow') {
-      if (distToSegment(pt.x, pt.y, a.x1, a.y1, a.x2, a.y2) <= r + (a.width || 2) / 2) return true;
+      if (distToSegment(l.x, l.y, a.x1 - c.x, a.y1 - c.y, a.x2 - c.x, a.y2 - c.y) <= r + (a.width || 2) / 2) return true;
     } else if (a.kind === 'rect') {
-      const x = Math.min(a.x1, a.x2), y = Math.min(a.y1, a.y2);
+      const x = Math.min(a.x1, a.x2) - c.x, y = Math.min(a.y1, a.y2) - c.y;
       const w = Math.abs(a.x2 - a.x1), h = Math.abs(a.y2 - a.y1);
       const bb = { x: x - r, y: y - r, w: w + r * 2, h: h + r * 2 };
-      if (pt.x >= bb.x && pt.x <= bb.x + bb.w && pt.y >= bb.y && pt.y <= bb.y + bb.h) return true;
+      if (l.x >= bb.x && l.x <= bb.x + bb.w && l.y >= bb.y && l.y <= bb.y + bb.h) return true;
     } else if (a.kind === 'circle') {
-      if (Math.hypot(pt.x - a.cx, pt.y - a.cy) <= a.r + r) return true;
+      if (Math.hypot(l.x, l.y) <= a.r + r) return true;
     } else if (a.kind === 'text') {
-      const bb = bboxOf(a.id);
-      if (pt.x >= bb.x - r && pt.x <= bb.x + bb.w + r && pt.y >= bb.y - r && pt.y <= bb.y + bb.h + r) return true;
+      const bb = bboxUnrotated(a);
+      const bx = bb.x - c.x, by = bb.y - c.y;
+      if (l.x >= bx - r && l.x <= bx + bb.w + r && l.y >= by - r && l.y <= by + bb.h + r) return true;
     }
   }
   return false;
@@ -2020,7 +2081,8 @@ function finishErase(act) {
   const modifiedStrokes = [];
   for (const a of roomData.annotations) {
     if (a.kind === 'pen') {
-      const kept = a.points.filter((pt) => !nearEraser(pt, act));
+      const ePts = act.points.map((ep) => toLocal(ep, a));
+      const kept = a.points.filter((pt) => !nearEraser(toLocal(pt, a), ePts, act.radius));
       if (kept.length < 2) deletedIds.push(a.id);
       else if (kept.length !== a.points.length) modifiedStrokes.push(Object.assign({}, a, { points: kept }));
     } else if (eraseAffects(a, act)) {
@@ -2061,7 +2123,7 @@ function placeText(p) {
     const text = el.value;
     el.remove();
     if (text.trim()) {
-      const a = { id: uid(), kind: 'text', layer: 'annotation', color: toolColor, x: p.x, y: p.y, fontSize, text };
+      const a = { id: uid(), kind: 'text', layer: 'annotation', color: toolColor, x: p.x, y: p.y, fontSize, text, rotation: 0 };
       stampElement(a);
       roomData.annotations.push(a);
       selectedId = a.id;
@@ -2090,7 +2152,7 @@ function updateInspector() {
   }
   insp.classList.remove('hidden');
   const sel = findElement(selectedId);
-  $('#inspRotHint').classList.toggle('hidden', !(sel && sel.kind === 'image'));
+  $('#inspRotHint').classList.toggle('hidden', !sel);
   const cr = $('#inspCreator');
   if (sel && sel.createdBy) {
     cr.textContent = '创建：' + sel.createdBy.name + ' · ' + formatElementTime(sel.createdAt);
@@ -2121,6 +2183,8 @@ function deleteSelected() {
 function duplicateElement(el, dx = 26, dy = 26) {
   const clone = JSON.parse(JSON.stringify(el));
   clone.id = uid();
+  delete clone.createdBy; // 复制品由复制者重新署名
+  delete clone.createdAt;
   stampElement(clone);
   if (clone.kind === 'image') { clone.x += dx; clone.y += dy; }
   else if (clone.kind === 'circle') { clone.cx += dx; clone.cy += dy; }
@@ -2138,13 +2202,51 @@ function stampElement(el) {
   return el;
 }
 
+/** 以元素自身中心为基准等比缩放（图片与标注通用，中心保持不变） */
+function scaleElement(el, factor) {
+  if (!el) return;
+  if (el.kind === 'image') {
+    el.width = Math.max(24, el.width * factor);
+    el.height = Math.max(24, el.height * factor);
+    return;
+  }
+  const c = elementCenter(el);
+  const around = (x, y) => ({ x: c.x + (x - c.x) * factor, y: c.y + (y - c.y) * factor });
+  switch (el.kind) {
+    case 'pen':
+      el.points = el.points.map((pt) => around(pt.x, pt.y));
+      break;
+    case 'line':
+    case 'arrow':
+    case 'rect': {
+      const p1 = around(el.x1, el.y1);
+      const p2 = around(el.x2, el.y2);
+      el.x1 = p1.x; el.y1 = p1.y; el.x2 = p2.x; el.y2 = p2.y;
+      break;
+    }
+    case 'circle':
+      el.r = Math.max(2, el.r * factor);
+      break;
+    case 'text': {
+      el.fontSize = Math.max(8, (el.fontSize || 26) * factor);
+      const m = textMetrics(el);
+      el.x = c.x - m.w / 2;
+      el.y = c.y - m.h / 2;
+      break;
+    }
+  }
+}
+
 /** 精确旋转选中图片（15° 步进） */
 function rotateSelected(deg) {
   const el = selectedId && findElement(selectedId);
   if (!el || !canEdit) return;
-  if (el.kind !== 'image') { toast('仅图片支持旋转', 'error'); return; }
   el.rotation = (el.rotation || 0) + deg * Math.PI / 180;
-  sendOp({ type: 'transform-image', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
+  if (el.kind === 'image') {
+    sendOp({ type: 'transform-image', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
+  } else {
+    sendOp({ type: 'update-annotation', element: JSON.parse(JSON.stringify(el)) });
+  }
 }
 
 // ---------- 元素信息（右键查看创建人与创建时间） ----------
