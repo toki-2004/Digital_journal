@@ -319,6 +319,72 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .fp-hint { font-size: 11px; color: var(--muted); }
 .fp-foot .btn { width: 100%; }
 
+/* ---------- 颜色面板（色盘 / 16 进制） ---------- */
+.color-picker-btn {
+  width: 44px; height: 42px; border: none; background: transparent; border-radius: 8px;
+  color: var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; position: relative; transition: background .12s;
+}
+.color-picker-btn:hover { background: #f0f0ee; }
+.color-picker-btn.active { background: var(--accent-soft); color: var(--accent); }
+.color-picker-btn .cp-dot {
+  width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.14);
+}
+.color-picker-btn .cp-label { font-size: 11px; line-height: 1; color: var(--muted); }
+
+.color-panel {
+  position: absolute; top: 18px; right: 18px; bottom: 60px; width: 288px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow); z-index: 25; display: flex; flex-direction: column;
+  overflow: hidden; animation: fpIn .18s ease;
+}
+.cp-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px 8px; border-bottom: 1px solid var(--line);
+}
+.cp-title { font-weight: 600; font-size: 14px; }
+.cp-close {
+  border: none; background: transparent; color: var(--muted); font-size: 20px;
+  width: 26px; height: 26px; border-radius: 6px; cursor: pointer; line-height: 1;
+}
+.cp-close:hover { background: #f0f0ee; color: var(--ink); }
+.cp-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.cp-wheel {
+  width: 210px; height: 210px; margin: 0 auto; border-radius: 50%;
+  position: relative; cursor: crosshair; touch-action: none;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+}
+.cp-wheel-bg {
+  position: absolute; inset: 0; border-radius: 50%;
+  background:
+    radial-gradient(circle, #fff 0%, #fff 20%, rgba(255,255,255,0) 62%),
+    conic-gradient(from 90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+.cp-wheel-thumb {
+  position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.28), 0 1px 3px rgba(0,0,0,.35);
+  pointer-events: none;
+}
+.cp-value-row { display: flex; align-items: center; gap: 8px; }
+.cp-value-row label { font-size: 11px; color: var(--muted); flex: 0 0 auto; }
+.cp-value-row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.cp-hex-row { display: flex; align-items: center; gap: 10px; }
+.cp-preview {
+  width: 34px; height: 34px; border-radius: 8px; flex: 0 0 auto;
+  border: 1px solid var(--line); box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+}
+.cp-hex {
+  flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 10px; font-size: 13px; font-family: "Cascadia Code", Consolas, monospace;
+  outline: none;
+}
+.cp-hex:focus { border-color: var(--accent); }
+.cp-hex.invalid { border-color: var(--danger); background: #fdf3f3; }
+.cp-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.cp-presets .swatch { width: 22px; height: 22px; }
+.cp-hint { font-size: 11px; color: var(--muted); }
+
 /* ---------- 右侧边栏 ---------- */
 .sidebar {
   width: 292px; flex: 0 0 292px; background: var(--card);
@@ -338,7 +404,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .footer-github a:hover { text-decoration: underline; }
 .footer-github .dot { color: #d0d0cc; }
 
-.member-list { padding: 8px 0; }
+.member-list { padding: 8px 0; flex: 1; overflow-y: auto; min-height: 0; }
 .member-row { display: flex; align-items: center; gap: 10px; padding: 8px 16px; }
 .member-row .avatar {
   width: 26px; height: 26px; border-radius: 50%; color: #fff; font-size: 12px;
@@ -353,6 +419,40 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .member-row .tag.admin { color: #9a6b00; background: #fbf3d9; }
 .member-row .tag.page { color: #4a7d4a; background: #eaf5ea; }
 .member-row .cursor-pos { font-size: 11px; color: var(--muted); }
+
+/* ---------- 房间聊天（仅当前房间生效，随房间持久化） ---------- */
+.chat-box {
+  display: flex; flex-direction: column; flex: 0 0 210px; min-height: 0;
+  border-top: 1px solid var(--line); background: var(--card);
+}
+.chat-head {
+  padding: 8px 16px 6px; font-size: 11px; color: var(--muted);
+  font-weight: 600; letter-spacing: 1px;
+}
+.chat-list {
+  flex: 1; overflow-y: auto; padding: 4px 12px 8px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.chat-empty { color: var(--muted); font-size: 11px; text-align: center; padding: 10px 0; }
+.chat-msg { font-size: 12.5px; }
+.chat-meta { display: flex; align-items: baseline; gap: 6px; }
+.chat-name { font-weight: 600; font-size: 11.5px; }
+.chat-time { font-size: 10px; color: var(--muted); }
+.chat-text { word-break: break-word; white-space: pre-wrap; line-height: 1.45; }
+.chat-input-row {
+  display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line);
+}
+.chat-input-row input {
+  flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 9px; font-size: 12.5px; outline: none; background: #fff;
+}
+.chat-input-row input:focus { border-color: var(--accent); }
+.chat-send {
+  border: none; background: var(--accent); color: #fff; border-radius: 8px;
+  width: 32px; height: 32px; cursor: pointer; flex: 0 0 32px; font-size: 14px; line-height: 1;
+}
+.chat-send:hover { filter: brightness(1.06); }
+.sidebar.collapsed .chat-box { display: none; }
 
 /* ---------- 弹窗与提示 ---------- */
 .modal-mask {
@@ -422,6 +522,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
   .zoom-pill { right: 12px; bottom: 102px; }
   .float-inspector { bottom: 102px; left: 8px; right: 176px; transform: none; max-width: none; justify-content: flex-start; }
   .font-panel { right: 12px; top: 12px; bottom: 112px; width: min(300px, calc(100vw - 24px)); }
+  .color-panel { right: 12px; top: 12px; bottom: 112px; width: min(300px, calc(100vw - 24px)); }
 }
 </style>
 </head>
@@ -481,6 +582,9 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20l-3-3 9-9 6 6-6 6H7z"/><path d="M13 8l6 6"/></svg>
         <span class="kbd">E</span>
       </button>
+      <button class="tool-btn" data-tool="eyedropper" title="滴管取色（吸取画布任意位置颜色）">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.71 5.63l-2.34-2.34a1 1 0 0 0-1.41 0l-3.12 3.12-1.29-1.29a1 1 0 0 0-1.41 0l-1.42 1.42a1 1 0 0 0 0 1.41l1.29 1.29L4.7 16.41A3 3 0 0 0 4 18.59V21h2.41a3 3 0 0 0 2.12-.88l8.4-8.4 1.29 1.29a1 1 0 0 0 1.41 0l1.42-1.42a1 1 0 0 0 0-1.41l-1.29-1.29 3.12-3.12a1 1 0 0 0 0-1.41z"/></svg>
+      </button>
       <div class="tool-divider"></div>
       <button class="tool-btn" data-tool="line" title="直线">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20L20 4"/></svg>
@@ -509,6 +613,10 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
       <div class="tool-divider"></div>
       <div class="tool-settings">
         <div class="swatches" id="swatches"></div>
+        <button class="color-picker-btn" id="btnColorPicker" title="颜色选择（色盘 / 16 进制）">
+          <span class="cp-dot" id="colorDot" style="background:#e34f4f"></span>
+          <span class="cp-label">颜色</span>
+        </button>
         <div class="range-row">
           <label>粗细</label>
           <input type="range" id="strokeWidth" min="1" max="24" value="3">
@@ -558,6 +666,28 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
           <input type="file" id="fpFile" class="hidden" accept=".ttf,.otf,.woff,.woff2,font/*">
         </div>
       </div>
+      <div class="color-panel hidden" id="colorPanel">
+        <div class="cp-head">
+          <span class="cp-title">颜色</span>
+          <button class="cp-close" id="cpClose" title="关闭">×</button>
+        </div>
+        <div class="cp-body">
+          <div class="cp-wheel" id="cpWheel">
+            <div class="cp-wheel-bg" id="cpWheelBg"></div>
+            <span class="cp-wheel-thumb" id="cpWheelThumb"></span>
+          </div>
+          <div class="cp-value-row">
+            <label>亮度</label>
+            <input type="range" id="cpValue" min="0" max="100" value="100">
+          </div>
+          <div class="cp-hex-row">
+            <span class="cp-preview" id="cpPreview"></span>
+            <input type="text" id="cpHex" class="cp-hex" maxlength="7" spellcheck="false" autocomplete="off" placeholder="#RRGGBB">
+          </div>
+          <div class="cp-presets" id="cpPresets"></div>
+          <span class="cp-hint">拖拽色盘取色，或直接输入 16 进制颜色码</span>
+        </div>
+      </div>
       <div class="page-bar" id="pageBar">
         <div class="page-tabs" id="pageTabs"></div>
         <button class="page-add" id="btnAddPage" title="新增页面">＋</button>
@@ -585,6 +715,14 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
         <button class="icon-btn" id="btnSidebarToggle" title="收起 / 展开面板">»</button>
       </div>
       <div class="member-list" id="memberList"></div>
+      <div class="chat-box" id="chatBox">
+        <div class="chat-head">房间聊天</div>
+        <div class="chat-list" id="chatList"></div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" maxlength="500" placeholder="输入消息，Enter 发送" autocomplete="off">
+          <button class="chat-send" id="chatSend" title="发送">➤</button>
+        </div>
+      </div>
     </aside>
   </div>
 </div>
@@ -839,6 +977,14 @@ socket.on('room-deleted', () => {
   goHome();
 });
 
+socket.on('chat-message', (msg) => {
+  if (!roomData || !msg || msg.text == null) return;
+  if (!Array.isArray(roomData.messages)) roomData.messages = [];
+  roomData.messages.push(msg);
+  if (roomData.messages.length > 200) roomData.messages = roomData.messages.slice(-200);
+  renderChat();
+});
+
 // ---------- 连接状态 ----------
 function setConn(state) {
   const el = $('#connStatus');
@@ -1021,6 +1167,7 @@ let canvasEl = null;
 let ctx2d = null;
 let canvasWrap = null;
 let currentTool = 'select';
+let pickerReturnTool = 'select'; // 滴管取色后要返回的工具
 let toolColor = '#e34f4f';
 let toolFont = 'system'; // 当前文字字体（默认/内置/服务器导入）
 let serverFonts = [];    // 服务器字体库 [{ id, name, fileName, format, size, uploadedAt }]
@@ -1792,6 +1939,46 @@ function renderMembers() {
   }).join('');
 }
 
+// ---------- 房间聊天（仅当前房间，服务端按房间持久化） ----------
+function chatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  return d.toDateString() === now.toDateString() ? hm : (String(d.getMonth() + 1) + '/' + String(d.getDate()) + ' ' + hm);
+}
+
+function renderChat() {
+  const list = $('#chatList');
+  if (!list) return;
+  const msgs = (roomData && roomData.messages) || [];
+  if (!msgs.length) {
+    list.innerHTML = '<div class="chat-empty">还没有消息，说点什么吧～</div>';
+    return;
+  }
+  list.innerHTML = msgs.map((m) => {
+    const isMe = m.userId === me.id;
+    return '<div class="chat-msg' + (isMe ? ' me' : '') + '">'
+      + '<div class="chat-meta"><span class="chat-name" style="color:' + esc(m.color || '#888888') + '">' + esc(m.name || '匿名') + '</span>'
+      + '<span class="chat-time">' + chatTime(m.at) + '</span></div>'
+      + '<div class="chat-text">' + esc(m.text) + '</div>'
+      + '</div>';
+  }).join('');
+  list.scrollTop = list.scrollHeight;
+}
+
+function sendChat() {
+  const input = $('#chatInput');
+  if (!input || !currentRoomId) return;
+  const text = input.value.trim();
+  if (!text) return;
+  socket.emit('chat-message', { roomId: currentRoomId, text }, (res) => {
+    if (res && res.ok === false) toast(res.reason || '发送失败', 'error');
+  });
+  input.value = '';
+  input.focus();
+}
+
 /** 根据页面 ID 取页名（未知时显示“另一页”） */
 function pageNameOf(pageId) {
   if (!roomData || !roomData.pages) return '另一页';
@@ -1849,6 +2036,22 @@ function bindCanvasEvents() {
   });
 }
 
+/** 滴管取色：读取画布该位置像素（所见即所得），设为当前颜色后返回原工具 */
+function pickColorAt(e) {
+  const r = canvasEl.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const px = clamp(Math.floor((e.clientX - r.left) / viewScale * dpr), 0, canvasEl.width - 1);
+  const py = clamp(Math.floor((e.clientY - r.top) / viewScale * dpr), 0, canvasEl.height - 1);
+  let data;
+  try {
+    data = ctx2d.getImageData(px, py, 1, 1).data;
+  } catch (err) { return; } // 画布被跨域污染时无法读取，静默跳过
+  const hex = rgbToHex(data[0], data[1], data[2]);
+  setToolColor(hex);
+  toast('已取色 ' + hex, 'ok');
+  setTool(pickerReturnTool);
+}
+
 function onPointerDown(e) {
   if (!roomData) return;
   if (pageLoading) return; // 页面内容加载中，禁止操作避免覆盖数据
@@ -1885,7 +2088,8 @@ function onPointerDown(e) {
   if (e.button !== 0 || !inside) return;
   if (e.pointerType === 'touch') canvasWrap.setPointerCapture(e.pointerId);
   const p = toLogical(e);
-  if (currentTool === 'pen') startPen(p);
+  if (currentTool === 'eyedropper') { pickColorAt(e); return; }
+  else if (currentTool === 'pen') startPen(p);
   else if (currentTool === 'eraser') startErase(p);
   else if (currentTool === 'line' || currentTool === 'rect' || currentTool === 'circle' || currentTool === 'arrow') startShape(p);
   else if (currentTool === 'text') {
@@ -2860,6 +3064,7 @@ function applyServerData(data) {
     lastModified: data.lastModified,
     revision: data.revision || 0,
     pages,
+    messages: Array.isArray(data.messages) ? data.messages.slice(-200) : [],
   };
   const want = data.activePageId || pages[0].id;
   activePage = pages.find((p) => p.id === want) || pages[0];
@@ -2884,6 +3089,7 @@ function applyServerData(data) {
   $('#roomName').textContent = roomData.name;
   updatePermUI();
   renderMembers();
+  renderChat();
   updateInspector();
   renderPageBar();
   resetZoom();
@@ -2963,7 +3169,7 @@ function updatePermUI() {
   badge.classList.toggle('ro', !!(roomData && roomData.editPermission === 'readonly'));
   $('#readonlyBanner').classList.toggle('hidden', canEdit);
   for (const b of document.querySelectorAll('#toolbar .tool-btn')) {
-    b.disabled = !canEdit && b.dataset.tool !== 'select';
+    b.disabled = !canEdit && b.dataset.tool !== 'select' && b.dataset.tool !== 'eyedropper';
   }
   $('#btnUploadImage').disabled = !canEdit;
   $('#btnAddPage').disabled = !canEdit;
@@ -3336,6 +3542,7 @@ function renderFontPanel() {
 }
 
 function openFontPanel() {
+  closeColorPanel(); // 颜色面板与字体面板互斥，不会同时弹出
   fontPanelOpen = true;
   $('#fontPanel').classList.remove('hidden');
   $('#btnFontPicker').classList.add('active');
@@ -3428,26 +3635,190 @@ async function uploadFont(file) {
 
 // ---------- 工具栏 / 快捷键 ----------
 function setTool(t) {
+  if (t === 'eyedropper' && currentTool !== 'eyedropper') pickerReturnTool = currentTool;
   currentTool = t;
   for (const b of document.querySelectorAll('#toolbar .tool-btn')) {
     b.classList.toggle('active', b.dataset.tool === t);
   }
+  if (t === 'eyedropper') canvasEl.style.cursor = 'crosshair';
   if (t === 'text') openFontPanel(); // 文字工具：右侧自动弹出字体选择
+}
+
+// ---------- 颜色（色盘 / 16 进制） ----------
+const QUICK_COLORS = ['#37352f', '#e34f4f', '#f08a24', '#e0a800', '#58a63f', '#2f9e9e', '#3a7bd5', '#7a5cd6', '#d6548f', '#888888'];
+let colorH = 0, colorS = 0, colorV = 1; // 色盘 HSV 状态（始终跟随 toolColor）
+
+function hexToRgb(hex) {
+  let s = String(hex || '').trim().replace(/^#/, '');
+  if (/^[0-9a-fA-F]{3}$/.test(s)) s = s.split('').map((ch) => ch + ch).join('');
+  if (!/^[0-9a-fA-F]{6}$/.test(s)) return null;
+  const n = parseInt(s, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function rgbToHex(r, g, b) {
+  return '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+}
+
+function rgbToHsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s: max === 0 ? 0 : d / max, v: max };
+}
+
+function hsvToRgb(h, s, v) {
+  h = ((h % 360) + 360) % 360;
+  const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
+}
+
+/** 统一入口：设置当前颜色并同步所有 UI（色块 / 按钮圆点 / 色盘 / 预览 / hex） */
+function setToolColor(color) {
+  toolColor = color;
+  const rgb = hexToRgb(color);
+  if (rgb) {
+    const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+    colorH = hsv.h; colorS = hsv.s; colorV = hsv.v;
+  }
+  syncColorUI();
+}
+
+function syncColorUI() {
+  for (const s of document.querySelectorAll('.swatch')) {
+    s.classList.toggle('active', s.dataset.color === toolColor);
+  }
+  const dot = $('#colorDot');
+  if (dot) dot.style.background = toolColor;
+  const preview = $('#cpPreview');
+  if (preview) preview.style.background = toolColor;
+  const hex = $('#cpHex');
+  if (hex) {
+    hex.value = toolColor;
+    hex.classList.remove('invalid');
+  }
+  const value = $('#cpValue');
+  if (value) value.value = Math.round(colorV * 100);
+  const bg = $('#cpWheelBg');
+  if (bg) bg.style.filter = 'brightness(' + colorV + ')';
+  const wheel = $('#cpWheel');
+  const thumb = $('#cpWheelThumb');
+  if (wheel && thumb && wheel.clientWidth) {
+    const cx = wheel.clientWidth / 2, cy = wheel.clientHeight / 2;
+    const ang = (colorH * Math.PI) / 180;
+    const rad = Math.max(0, (Math.min(wheel.clientWidth, wheel.clientHeight) / 2 - 9) * colorS);
+    thumb.style.left = (cx + Math.cos(ang) * rad) + 'px';
+    thumb.style.top = (cy + Math.sin(ang) * rad) + 'px';
+  }
+}
+
+function commitColorFromHsv() {
+  const rgb = hsvToRgb(colorH, colorS, colorV);
+  setToolColor(rgbToHex(rgb.r, rgb.g, rgb.b));
+}
+
+function bindColorWheel() {
+  const wheel = $('#cpWheel');
+  if (!wheel) return;
+  const onWheel = (e) => {
+    const rect = wheel.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx, dy = e.clientY - cy;
+    let h = Math.atan2(dy, dx) * 180 / Math.PI;
+    if (h < 0) h += 360;
+    colorH = h;
+    colorS = Math.min(1, Math.sqrt(dx * dx + dy * dy) / (rect.width / 2));
+    commitColorFromHsv();
+  };
+  wheel.addEventListener('pointerdown', (e) => {
+    try { wheel.setPointerCapture(e.pointerId); } catch (err) { /* 忽略：个别环境指针捕获失败不影响取色 */ }
+    onWheel(e);
+  });
+  wheel.addEventListener('pointermove', (e) => {
+    if (e.buttons & 1) onWheel(e);
+  });
+  const value = $('#cpValue');
+  if (value) {
+    value.addEventListener('input', () => {
+      colorV = Number(value.value) / 100;
+      commitColorFromHsv();
+    });
+  }
+}
+
+function bindColorHex() {
+  const hex = $('#cpHex');
+  if (!hex) return;
+  const apply = () => {
+    const rgb = hexToRgb(hex.value);
+    if (!rgb) { hex.classList.add('invalid'); return; }
+    hex.classList.remove('invalid');
+    setToolColor(rgbToHex(rgb.r, rgb.g, rgb.b));
+  };
+  hex.addEventListener('input', apply);
+  hex.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') apply();
+  });
+  hex.addEventListener('blur', () => {
+    if (!hexToRgb(hex.value)) {
+      hex.value = toolColor;
+      hex.classList.remove('invalid');
+    }
+  });
+}
+
+function openColorPanel() {
+  closeFontPanel(); // 颜色面板与字体面板互斥，不会同时弹出
+  $('#colorPanel').classList.remove('hidden');
+  $('#btnColorPicker').classList.add('active');
+  syncColorUI();
+}
+
+function closeColorPanel() {
+  $('#colorPanel').classList.add('hidden');
+  $('#btnColorPicker').classList.remove('active');
+}
+
+function toggleColorPanel() {
+  if ($('#colorPanel').classList.contains('hidden')) openColorPanel();
+  else closeColorPanel();
 }
 
 function setupSwatches() {
   const box = $('#swatches');
-  const colors = ['#37352f', '#e34f4f', '#f08a24', '#e0a800', '#58a63f', '#2f9e9e', '#3a7bd5', '#7a5cd6', '#d6548f', '#888888'];
-  box.innerHTML = colors.map((c) =>
+  box.innerHTML = QUICK_COLORS.map((c) =>
     '<button class="swatch' + (c === toolColor ? ' active' : '') + '" style="background:' + c + '" data-color="' + c + '" title="' + c + '"></button>'
   ).join('');
   for (const sw of box.querySelectorAll('.swatch')) {
-    sw.onclick = () => {
-      toolColor = sw.dataset.color;
-      for (const s of box.querySelectorAll('.swatch')) s.classList.remove('active');
-      sw.classList.add('active');
-    };
+    sw.onclick = () => setToolColor(sw.dataset.color);
   }
+}
+
+function setupColorPicker() {
+  const box = $('#cpPresets');
+  if (!box) return;
+  box.innerHTML = QUICK_COLORS.map((c) =>
+    '<button class="swatch' + (c === toolColor ? ' active' : '') + '" style="background:' + c + '" data-color="' + c + '" title="' + c + '"></button>'
+  ).join('');
+  for (const sw of box.querySelectorAll('.swatch')) {
+    sw.onclick = () => setToolColor(sw.dataset.color);
+  }
+  bindColorWheel();
+  bindColorHex();
 }
 
 function bindUI() {
@@ -3456,6 +3827,12 @@ function bindUI() {
     b.onclick = () => setTool(b.dataset.tool);
   }
   $('#btnFontPicker').onclick = toggleFontPanel;
+  $('#btnColorPicker').onclick = toggleColorPanel;
+  $('#cpClose').onclick = closeColorPanel;
+  $('#chatSend').onclick = sendChat;
+  $('#chatInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
+  });
   $('#fpClose').onclick = closeFontPanel;
   $('#fpImport').onclick = () => $('#fpFile').click();
   $('#fpFile').onchange = (e) => {
@@ -3736,6 +4113,7 @@ function openExportModal() {
    ========================================================================== */
 function init() {
   setupSwatches();
+  setupColorPicker();
   bindUI();
   setupCanvas();
   loadFonts();

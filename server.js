@@ -172,6 +172,7 @@ function migrateRoom(room) {
     delete room.images;
     delete room.annotations;
   }
+  if (!Array.isArray(room.messages)) room.messages = []; // 房间聊天（仅本房间生效）
   delete room.history; // 历史记录模块已移除，元素自带创建人/创建时间
   return room;
 }
@@ -290,6 +291,7 @@ function sanitizeRoom(room, locks) {
     lastModified: room.lastModified,
     revision: room.revision || 0,
     hasPassword: !!room.password,
+    messages: (room.messages || []).slice(-100), // 最近 100 条聊天，仅本房间可见
     pages: (room.pages || []).map((p) => ({
       id: p.id,
       name: p.name,
@@ -349,6 +351,7 @@ app.post('/api/rooms', (req, res) => {
     cover: body.cover || null,
     revision: 0,
     pages: [{ id: 'page_1', name: '第 1 页', images: [], annotations: [] }],
+    messages: [],
   };
   getIndex().rooms[id] = {
     id,
@@ -850,6 +853,34 @@ io.on('connection', (socket) => {
       if (member) member.name = user.name;
       broadcastMembers(roomId);
     }
+  });
+
+  // 房间聊天：持久化到房间文件并广播（仅当前房间内成员可见）
+  socket.on('chat-message', (payload, ack) => {
+    const doAck = typeof ack === 'function' ? ack : () => {};
+    const roomId = socket.data.roomId;
+    const user = socket.data.user;
+    if (!roomId || !user) return doAck({ ok: false, reason: '尚未加入房间' });
+    const text = String((payload && payload.text) || '').trim().slice(0, 500);
+    if (!text) return doAck({ ok: false, reason: '消息不能为空' });
+    const room = getRoom(roomId);
+    if (!room) return doAck({ ok: false, reason: '房间不存在' });
+    const msg = {
+      id: 'm_' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex'),
+      userId: user.id,
+      name: user.name,
+      color: user.color,
+      text,
+      at: Date.now(),
+    };
+    if (!Array.isArray(room.messages)) room.messages = [];
+    room.messages.push(msg);
+    if (room.messages.length > 500) room.messages = room.messages.slice(-500);
+    room.lastModified = new Date().toISOString();
+    saveRoom(roomId, room);
+    touchRoomMeta(roomId, {});
+    io.to(roomId).emit('chat-message', msg);
+    doAck({ ok: true });
   });
 
   // 乐观锁：锁定元素
