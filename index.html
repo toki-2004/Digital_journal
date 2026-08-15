@@ -385,6 +385,42 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .cp-presets .swatch { width: 22px; height: 22px; }
 .cp-hint { font-size: 11px; color: var(--muted); }
 
+/* ---------- 效果面板（阴影 / 描边） ---------- */
+.style-panel {
+  position: absolute; top: 18px; right: 18px; bottom: 60px; width: 288px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow); z-index: 25; display: flex; flex-direction: column;
+  overflow: hidden; animation: fpIn .18s ease;
+}
+.sp-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px 8px; border-bottom: 1px solid var(--line);
+}
+.sp-title { font-weight: 600; font-size: 14px; }
+.sp-close {
+  border: none; background: transparent; color: var(--muted); font-size: 20px;
+  width: 26px; height: 26px; border-radius: 6px; cursor: pointer; line-height: 1;
+}
+.sp-close:hover { background: #f0f0ee; color: var(--ink); }
+.sp-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.sp-hint { font-size: 11px; color: var(--muted); }
+.sp-section {
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.sp-section-head { display: flex; align-items: center; justify-content: space-between; }
+.sp-section-title { font-size: 12.5px; font-weight: 600; }
+.sp-section-head input[type=checkbox] {
+  width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; margin: 0;
+}
+.sp-row { display: flex; align-items: center; gap: 8px; }
+.sp-row label { font-size: 11px; color: var(--muted); flex: 0 0 auto; min-width: 28px; }
+.sp-row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.sp-row .sp-val {
+  font-size: 10.5px; color: var(--muted); width: 36px; text-align: right;
+  flex: 0 0 36px; font-family: "Cascadia Code", Consolas, monospace;
+}
+
 /* ---------- 右侧边栏 ---------- */
 .sidebar {
   width: 292px; flex: 0 0 292px; background: var(--card);
@@ -530,6 +566,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
   .float-inspector { bottom: 102px; left: 8px; right: 176px; transform: none; max-width: none; justify-content: flex-start; }
   .font-panel { right: 12px; top: 12px; bottom: 112px; width: min(300px, calc(100vw - 24px)); }
   .color-panel { right: 12px; top: 12px; bottom: 112px; width: min(300px, calc(100vw - 24px)); }
+  .style-panel { right: 12px; top: 12px; bottom: 112px; width: min(300px, calc(100vw - 24px)); }
 }
 </style>
 </head>
@@ -636,6 +673,9 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
           <span class="fp-label">字体</span>
           <span class="fp-current" id="fontNameLabel">默认</span>
         </button>
+        <button class="font-picker-btn" id="btnStylePicker" title="效果设置（阴影 / 描边，选中元素后应用）">
+          <span class="fp-label">✨ 效果</span>
+        </button>
       </div>
     </aside>
 
@@ -693,6 +733,36 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
           </div>
           <div class="cp-presets" id="cpPresets"></div>
           <span class="cp-hint">拖拽色盘取色，或直接输入 16 进制颜色码</span>
+        </div>
+      </div>
+      <div class="style-panel hidden" id="stylePanel">
+        <div class="sp-head">
+          <span class="sp-title">效果</span>
+          <button class="sp-close" id="spClose" title="关闭">×</button>
+        </div>
+        <div class="sp-body">
+          <span class="sp-hint" id="spHint">请先选择一个元素（支持多选批量应用）</span>
+          <div class="sp-section">
+            <div class="sp-section-head">
+              <span class="sp-section-title">阴影</span>
+              <span class="sp-val" id="spShadowVal">0</span>
+            </div>
+            <div class="sp-row">
+              <input type="range" id="spShadow" min="0" max="100" value="0">
+            </div>
+            <span class="sp-hint">0 为关闭，越强越模糊、偏移越大</span>
+          </div>
+          <div class="sp-section">
+            <div class="sp-section-head">
+              <span class="sp-section-title">描边</span>
+              <span class="sp-val" id="spOutlineVal">0</span>
+            </div>
+            <div class="sp-row">
+              <input type="range" id="spOutline" min="0" max="100" value="0">
+            </div>
+            <span class="sp-hint">0 为关闭，白色描边，越强越粗</span>
+          </div>
+          <span class="sp-hint">调整时实时预览，松开后保存到所选元素</span>
         </div>
       </div>
       <div class="page-bar" id="pageBar">
@@ -1409,18 +1479,88 @@ function draw() {
   drawActionPreview(ctx);
 }
 
+/** 应用元素阴影（shadow 为 0~100 强度，0/缺省=关闭；返回是否生效） */
+function setShadow(ctx, el) {
+  const s = el && typeof el.shadow === 'number' ? el.shadow : 0;
+  if (s <= 0) {
+    clearShadow(ctx);
+    return false;
+  }
+  ctx.shadowColor = 'rgba(0,0,0,.35)';
+  ctx.shadowBlur = s * 0.3;      // 强度 100 → 模糊 30
+  ctx.shadowOffsetX = s * 0.12;  // 强度 100 → 偏移 12
+  ctx.shadowOffsetY = s * 0.12;
+  return true;
+}
+
+function clearShadow(ctx) {
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+}
+
+/** 描边带来的视觉外扩量（outline 为 0~100 强度；包围盒 / 命中 / 橡皮擦按此扩展） */
+function effectPad(el) {
+  const w = (typeof el.outline === 'number' && el.outline > 0) ? el.outline * 0.15 : 0;
+  return w / 2;
+}
+
 function drawImageEl(ctx, im) {
   const img = imgCache.get(im.id);
   ctx.save();
   ctx.translate(im.x, im.y);
   ctx.rotate(im.rotation || 0);
+  setShadow(ctx, im);
   if (img) {
     ctx.drawImage(img, -im.width / 2, -im.height / 2, im.width, im.height);
   } else {
     ctx.strokeStyle = '#c9c9c6';
     ctx.strokeRect(-im.width / 2, -im.height / 2, im.width, im.height);
   }
+  if (typeof im.outline === 'number' && im.outline > 0) {
+    clearShadow(ctx); // 阴影由图片本体投射，描边不再叠加二次阴影
+    ctx.strokeStyle = '#ffffff'; // 固定白色描边，粗细随强度
+    ctx.lineWidth = im.outline * 0.15;
+    ctx.strokeRect(-im.width / 2, -im.height / 2, im.width, im.height);
+  }
   ctx.restore();
+}
+
+/** 描出标注的几何路径（画笔/直线/箭头/矩形/圆形共用，便于“宽线描边 + 本体”双层绘制） */
+function traceAnnotationPath(ctx, a) {
+  ctx.beginPath();
+  switch (a.kind) {
+    case 'pen': {
+      if (a.points.length < 2) break;
+      ctx.moveTo(a.points[0].x, a.points[0].y);
+      for (let i = 1; i < a.points.length; i++) ctx.lineTo(a.points[i].x, a.points[i].y);
+      break;
+    }
+    case 'line':
+      ctx.moveTo(a.x1, a.y1);
+      ctx.lineTo(a.x2, a.y2);
+      break;
+    case 'arrow': {
+      ctx.moveTo(a.x1, a.y1);
+      ctx.lineTo(a.x2, a.y2);
+      const ang = Math.atan2(a.y2 - a.y1, a.x2 - a.x1);
+      const len = 13 + (a.width || 2) * 2;
+      ctx.moveTo(a.x2, a.y2);
+      ctx.lineTo(a.x2 - len * Math.cos(ang - 0.42), a.y2 - len * Math.sin(ang - 0.42));
+      ctx.moveTo(a.x2, a.y2);
+      ctx.lineTo(a.x2 - len * Math.cos(ang + 0.42), a.y2 - len * Math.sin(ang + 0.42));
+      break;
+    }
+    case 'rect': {
+      const x = Math.min(a.x1, a.x2), y = Math.min(a.y1, a.y2);
+      ctx.rect(x, y, Math.abs(a.x2 - a.x1), Math.abs(a.y2 - a.y1));
+      break;
+    }
+    case 'circle':
+      ctx.arc(a.cx, a.cy, Math.max(1, a.r), 0, Math.PI * 2);
+      break;
+  }
 }
 
 function drawAnnotation(ctx, a, withLock = true) {
@@ -1434,59 +1574,43 @@ function drawAnnotation(ctx, a, withLock = true) {
   }
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.strokeStyle = a.color;
   ctx.fillStyle = a.color;
-  ctx.lineWidth = a.width || 2;
-  switch (a.kind) {
-    case 'pen': {
-      if (a.points.length < 2) break;
-      ctx.beginPath();
-      ctx.moveTo(a.points[0].x, a.points[0].y);
-      for (let i = 1; i < a.points.length; i++) ctx.lineTo(a.points[i].x, a.points[i].y);
+  // 正在实时绘制（笔迹/图形）的元素跳过效果：阴影/描边在落盘后再出现，避免绘制过程掉帧
+  const live = !!(currentAction && (currentAction.type === 'pen' || currentAction.type === 'shape') && currentAction.element === a);
+  const hasOutline = typeof a.outline === 'number' && a.outline > 0;
+  if (a.kind === 'text') {
+    ctx.font = (a.fontSize || 26) + 'px ' + fontStack(a.fontFamily || 'system');
+    ctx.textBaseline = 'top';
+    const fs = a.fontSize || 26;
+    const lines = String(a.text || '').split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const y = a.y + i * fs * 1.25;
+      if (hasOutline && !live) {
+        setShadow(ctx, a); // 描边通道带阴影，主体通道不再叠加，避免双重阴影
+        ctx.lineWidth = a.outline * 0.15;
+        ctx.strokeStyle = '#ffffff';
+        ctx.strokeText(lines[i], a.x, y);
+        clearShadow(ctx);
+      }
+      if (a.shadow && !live) setShadow(ctx, a);
+      ctx.fillText(lines[i], a.x, y);
+      clearShadow(ctx);
+    }
+  } else {
+    traceAnnotationPath(ctx, a);
+    if (hasOutline && !live) {
+      // 第一遍：宽线描边（带阴影），把主体完全包住
+      setShadow(ctx, a);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = (a.width || 2) + a.outline * 0.15 * 2;
       ctx.stroke();
-      break;
+      clearShadow(ctx);
     }
-    case 'line': {
-      ctx.beginPath();
-      ctx.moveTo(a.x1, a.y1);
-      ctx.lineTo(a.x2, a.y2);
-      ctx.stroke();
-      break;
-    }
-    case 'arrow': {
-      ctx.beginPath();
-      ctx.moveTo(a.x1, a.y1);
-      ctx.lineTo(a.x2, a.y2);
-      ctx.stroke();
-      const ang = Math.atan2(a.y2 - a.y1, a.x2 - a.x1);
-      const len = 13 + (a.width || 2) * 2;
-      ctx.beginPath();
-      ctx.moveTo(a.x2, a.y2);
-      ctx.lineTo(a.x2 - len * Math.cos(ang - 0.42), a.y2 - len * Math.sin(ang - 0.42));
-      ctx.moveTo(a.x2, a.y2);
-      ctx.lineTo(a.x2 - len * Math.cos(ang + 0.42), a.y2 - len * Math.sin(ang + 0.42));
-      ctx.stroke();
-      break;
-    }
-    case 'rect': {
-      const x = Math.min(a.x1, a.x2), y = Math.min(a.y1, a.y2);
-      const w = Math.abs(a.x2 - a.x1), h = Math.abs(a.y2 - a.y1);
-      ctx.strokeRect(x, y, w, h);
-      break;
-    }
-    case 'circle': {
-      ctx.beginPath();
-      ctx.arc(a.cx, a.cy, Math.max(1, a.r), 0, Math.PI * 2);
-      ctx.stroke();
-      break;
-    }
-    case 'text': {
-      ctx.font = (a.fontSize || 26) + 'px ' + fontStack(a.fontFamily || 'system');
-      ctx.textBaseline = 'top';
-      const lines = String(a.text || '').split('\n');
-      lines.forEach((line, i) => ctx.fillText(line, a.x, a.y + i * (a.fontSize || 26) * 1.25));
-      break;
-    }
+    if (a.shadow && !live) setShadow(ctx, a);
+    ctx.strokeStyle = a.color;
+    ctx.lineWidth = a.width || 2;
+    ctx.stroke();
+    clearShadow(ctx);
   }
   ctx.restore();
   if (withLock) drawLockBadge(ctx, a.id);
@@ -1514,21 +1638,27 @@ function textMetrics(el) {
 
 /** 元素未旋转时的包围盒（世界坐标） */
 function bboxUnrotated(el) {
-  if (el.kind === 'image') return { x: el.x - el.width / 2, y: el.y - el.height / 2, w: el.width, h: el.height };
-  if (el.kind === 'circle') return { x: el.cx - el.r, y: el.cy - el.r, w: el.r * 2, h: el.r * 2 };
+  const p = effectPad(el); // 描边外扩量，选中框/框选/锁标记按此扩展
+  if (el.kind === 'image') return { x: el.x - el.width / 2 - p, y: el.y - el.height / 2 - p, w: el.width + p * 2, h: el.height + p * 2 };
+  if (el.kind === 'circle') return { x: el.cx - el.r - p, y: el.cy - el.r - p, w: el.r * 2 + p * 2, h: el.r * 2 + p * 2 };
   if (el.kind === 'pen') {
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
     for (const pt of el.points) {
       x1 = Math.min(x1, pt.x); y1 = Math.min(y1, pt.y);
       x2 = Math.max(x2, pt.x); y2 = Math.max(y2, pt.y);
     }
-    return { x: x1, y: y1, w: Math.max(0, x2 - x1), h: Math.max(0, y2 - y1) };
+    return { x: x1 - p, y: y1 - p, w: Math.max(0, x2 - x1) + p * 2, h: Math.max(0, y2 - y1) + p * 2 };
   }
   if (el.kind === 'text') {
     const m = textMetrics(el);
-    return { x: el.x, y: el.y, w: m.w, h: m.h };
+    return { x: el.x - p, y: el.y - p, w: m.w + p * 2, h: m.h + p * 2 };
   }
-  return { x: Math.min(el.x1, el.x2), y: Math.min(el.y1, el.y2), w: Math.abs(el.x2 - el.x1), h: Math.abs(el.y2 - el.y1) };
+  return {
+    x: Math.min(el.x1, el.x2) - p,
+    y: Math.min(el.y1, el.y2) - p,
+    w: Math.abs(el.x2 - el.x1) + p * 2,
+    h: Math.abs(el.y2 - el.y1) + p * 2,
+  };
 }
 
 /** 元素旋转中心（世界坐标） */
@@ -1685,7 +1815,8 @@ function hitImage(p, im) {
   const cos = Math.cos(-(im.rotation || 0)), sin = Math.sin(-(im.rotation || 0));
   const lx = dx * cos - dy * sin;
   const ly = dx * sin + dy * cos;
-  if (Math.abs(lx) <= im.width / 2 + 6 && Math.abs(ly) <= im.height / 2 + 6) return true;
+  const pad = 6 + effectPad(im); // 描边也参与点击命中
+  if (Math.abs(lx) <= im.width / 2 + pad && Math.abs(ly) <= im.height / 2 + pad) return true;
   return isNearRotateHandle(p, im); // 图片上方的旋转手柄也可点击
 }
 
@@ -1699,7 +1830,7 @@ function isNearRotateHandle(p, el) {
 function hitAnnotation(p, a) {
   const l = toLocal(p, a);
   const c = elementCenter(a);
-  const tol = Math.max(8, (a.width || 2) + 4);
+  const tol = Math.max(8, (a.width || 2) + 4) + effectPad(a);
   let hit = false;
   switch (a.kind) {
     case 'pen': {
@@ -1846,7 +1977,16 @@ function applyPersistedOp(op) {
       break;
     case 'transform-image': {
       const im = images.find((e) => e.id === op.id);
-      if (im) Object.assign(im, { x: op.x, y: op.y, rotation: op.rotation, width: op.width, height: op.height });
+      if (im) {
+        // 只更新 op 中携带的字段：仅改样式的 op 不带几何字段，避免覆盖成 undefined
+        if (op.x !== undefined) im.x = op.x;
+        if (op.y !== undefined) im.y = op.y;
+        if (op.rotation !== undefined) im.rotation = op.rotation;
+        if (op.width !== undefined) im.width = op.width;
+        if (op.height !== undefined) im.height = op.height;
+        if (op.shadow !== undefined) im.shadow = op.shadow;
+        if (op.outline !== undefined) im.outline = op.outline;
+      }
       break;
     }
     case 'erase': {
@@ -2630,17 +2770,18 @@ function nearEraser(pt, pathPts, radius) {
 function eraseAffects(a, act) {
   const r = act.radius;
   const c = elementCenter(a);
+  const op = effectPad(a); // 描边也纳入擦除范围
   for (const pt of act.points) {
     const l = toLocal(pt, a); // 把橡皮擦轨迹变换到元素局部坐标系（含旋转）
     if (a.kind === 'line' || a.kind === 'arrow') {
-      if (distToSegment(l.x, l.y, a.x1 - c.x, a.y1 - c.y, a.x2 - c.x, a.y2 - c.y) <= r + (a.width || 2) / 2) return true;
+      if (distToSegment(l.x, l.y, a.x1 - c.x, a.y1 - c.y, a.x2 - c.x, a.y2 - c.y) <= r + (a.width || 2) / 2 + op) return true;
     } else if (a.kind === 'rect') {
       const x = Math.min(a.x1, a.x2) - c.x, y = Math.min(a.y1, a.y2) - c.y;
       const w = Math.abs(a.x2 - a.x1), h = Math.abs(a.y2 - a.y1);
-      const bb = { x: x - r, y: y - r, w: w + r * 2, h: h + r * 2 };
+      const bb = { x: x - r - op, y: y - r - op, w: w + r * 2 + op * 2, h: h + r * 2 + op * 2 };
       if (l.x >= bb.x && l.x <= bb.x + bb.w && l.y >= bb.y && l.y <= bb.y + bb.h) return true;
     } else if (a.kind === 'circle') {
-      if (Math.hypot(l.x, l.y) <= a.r + r) return true;
+      if (Math.hypot(l.x, l.y) <= a.r + r + op) return true;
     } else if (a.kind === 'text') {
       const bb = bboxUnrotated(a);
       const bx = bb.x - c.x, by = bb.y - c.y;
@@ -2765,6 +2906,8 @@ function toggleSelect(id) {
 }
 
 function updateInspector() {
+  flushStyleCommit(); // 选择变化前，先把滑块草稿落盘到原目标元素
+  if (stylePanelOpen) syncStylePanel();
   const insp = $('#floatInspector');
   const list = selectionList();
   if (!list.length) {
@@ -3591,6 +3734,7 @@ function renderFontPanel() {
 
 function openFontPanel() {
   closeColorPanel(); // 颜色面板与字体面板互斥，不会同时弹出
+  closeStylePanel(); // 效果面板同样互斥
   fontPanelOpen = true;
   $('#fontPanel').classList.remove('hidden');
   $('#btnFontPicker').classList.add('active');
@@ -3679,6 +3823,109 @@ async function uploadFont(file) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ---------- 效果面板（阴影 / 描边） ----------
+let stylePanelOpen = false;
+
+function openStylePanel() {
+  closeFontPanel();  // 与字体 / 颜色面板互斥
+  closeColorPanel();
+  stylePanelOpen = true;
+  $('#stylePanel').classList.remove('hidden');
+  $('#btnStylePicker').classList.add('active');
+  syncStylePanel();
+}
+
+function closeStylePanel() {
+  flushStyleCommit();
+  stylePanelOpen = false;
+  $('#stylePanel').classList.add('hidden');
+  $('#btnStylePicker').classList.remove('active');
+}
+
+function toggleStylePanel() {
+  if (stylePanelOpen) closeStylePanel();
+  else openStylePanel();
+}
+
+/** 把选中元素的阴影 / 描边同步到面板控件（多选 / 空选保持控件现状，只更新提示） */
+function syncStylePanel() {
+  const list = selectionList();
+  if (!list.length) {
+    $('#spHint').textContent = '请先选择一个元素（支持多选批量应用）';
+    return;
+  }
+  if (list.length > 1) {
+    $('#spHint').textContent = '已选 ' + list.length + ' 个元素，调整将批量应用';
+    return;
+  }
+  const el = list[0];
+  $('#spHint').textContent = '正在编辑：' + elementTypeName(el);
+  const sh = typeof el.shadow === 'number' ? el.shadow : 0;
+  $('#spShadow').value = sh;
+  $('#spShadowVal').textContent = sh;
+  const ol = typeof el.outline === 'number' ? el.outline : 0;
+  $('#spOutline').value = ol;
+  $('#spOutlineVal').textContent = ol;
+}
+
+/** 把面板当前值写入目标元素；commit=true 时发送 op 落盘（targets 缺省为当前选择集） */
+function applyStyleFromPanel(commit, targets) {
+  const list = targets || selectionList();
+  if (!list || !list.length) return;
+  const shadow = Number($('#spShadow').value) || 0;   // 0 = 关闭
+  const outline = Number($('#spOutline').value) || 0; // 0 = 关闭
+  for (const el of list) {
+    el.shadow = shadow;
+    el.outline = outline;
+  }
+  if (!commit) return;
+  for (const el of list) {
+    if (el.kind === 'image') {
+      sendOp({ type: 'transform-image', id: el.id, shadow: el.shadow, outline: el.outline });
+    } else {
+      sendOp({ type: 'update-annotation', element: JSON.parse(JSON.stringify(el)) });
+    }
+  }
+}
+
+let styleCommitTimer = null;
+let styleDraftElements = null; // 拖动滑块期间锁定目标元素，避免选择变化后把旧值应用到新选择
+
+function scheduleStyleCommit() {
+  clearTimeout(styleCommitTimer);
+  styleDraftElements = selectionList();
+  styleCommitTimer = setTimeout(commitStyleNow, 350);
+}
+
+function flushStyleCommit() {
+  if (!styleCommitTimer) return;
+  clearTimeout(styleCommitTimer);
+  styleCommitTimer = null;
+  commitStyleNow();
+}
+
+function commitStyleNow() {
+  styleCommitTimer = null;
+  const targets = styleDraftElements;
+  styleDraftElements = null;
+  if (!targets || !targets.length) return;
+  applyStyleFromPanel(true, targets.filter((el) => findElement(el.id))); // 已删除的元素不再落盘
+}
+
+function bindStylePanel() {
+  for (const id of ['spShadow', 'spOutline']) {
+    $('#' + id).addEventListener('input', () => {
+      if (!canEdit) return; // 只读房间允许查看效果，不允许修改
+      $('#spShadowVal').textContent = $('#spShadow').value;
+      $('#spOutlineVal').textContent = $('#spOutline').value;
+      applyStyleFromPanel(false); // 本地实时预览
+      scheduleStyleCommit();      // 松手后统一落盘
+    });
+    $('#' + id).addEventListener('change', commitStyleNow); // 滑块松手 / 取色器关闭 / 勾选切换立即保存
+  }
+  $('#spClose').onclick = closeStylePanel;
 }
 
 // ---------- 工具栏 / 快捷键 ----------
@@ -3831,6 +4078,7 @@ function bindColorHex() {
 
 function openColorPanel() {
   closeFontPanel(); // 颜色面板与字体面板互斥，不会同时弹出
+  closeStylePanel(); // 效果面板同样互斥
   $('#colorPanel').classList.remove('hidden');
   $('#btnColorPicker').classList.add('active');
   syncColorUI();
@@ -3875,6 +4123,7 @@ function bindUI() {
     b.onclick = () => setTool(b.dataset.tool);
   }
   $('#btnFontPicker').onclick = toggleFontPanel;
+  $('#btnStylePicker').onclick = toggleStylePanel;
   $('#btnColorPicker').onclick = toggleColorPanel;
   $('#cpClose').onclick = closeColorPanel;
   $('#chatSend').onclick = sendChat;
@@ -3889,6 +4138,7 @@ function bindUI() {
     e.target.value = '';
   };
   $('#fpSearch').oninput = renderFontPanel;
+  bindStylePanel();
   $('#btnUploadImage').onclick = () => $('#imageInput').click();
   $('#imageInput').onchange = (e) => {
     const f = e.target.files[0];
@@ -4015,13 +4265,8 @@ function renderExportCanvas(page, bgWhite, scale) {
     .sort((a, b) => elementZ(a, page.images, page.annotations) - elementZ(b, page.images, page.annotations));
   for (const el of ordered) {
     if (el.kind === 'image') {
-      const img = imgCache.get(el.id);
-      if (!img) continue;
-      ctx.save();
-      ctx.translate(el.x, el.y);
-      ctx.rotate(el.rotation || 0);
-      ctx.drawImage(img, -el.width / 2, -el.height / 2, el.width, el.height);
-      ctx.restore();
+      if (!imgCache.has(el.id)) continue; // 未加载的图片跳过（导出前会预加载）
+      drawImageEl(ctx, el); // 与画布同一条渲染路径，阴影/描边一并进入导出
     } else {
       drawAnnotation(ctx, el, false);
     }

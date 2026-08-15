@@ -672,6 +672,8 @@ function applyOp(room, op, user) {
       if (typeof op.rotation === 'number') img.rotation = op.rotation;
       if (typeof op.width === 'number') img.width = op.width;
       if (typeof op.height === 'number') img.height = op.height;
+      if (op.shadow !== undefined) img.shadow = op.shadow;
+      if (op.outline !== undefined) img.outline = op.outline;
       return null;
     }
     case 'erase': {
