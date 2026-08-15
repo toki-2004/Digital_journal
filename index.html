@@ -489,6 +489,10 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 }
 .modal-actions { padding: 10px 20px 18px; display: flex; justify-content: flex-end; gap: 8px; }
 .modal-actions .spacer { flex: 1; }
+.exp-prog { margin-top: 14px; padding-bottom: 2px; }
+.exp-prog-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.exp-prog-track { height: 8px; background: #ececea; border-radius: 5px; overflow: hidden; }
+.exp-prog-bar { height: 100%; width: 0; background: var(--accent); border-radius: 5px; transition: width .18s ease; }
 .room-info-box {
   background: #f8f8f7; border: 1px solid var(--line); border-radius: 8px;
   padding: 9px 12px; margin-bottom: 14px; font-size: 12.5px; color: var(--muted);
@@ -744,6 +748,8 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 
 <!-- Socket.io 客户端（由 server.js 自动提供） -->
 <script src="/socket.io/socket.io.js"></script>
+<!-- PDF 生成库（vendor，MIT）：将每页 PNG 组合成 A4 分页 PDF -->
+<script src="/vendor/pdf-lib.min.js"></script>
 <script>
 'use strict';
 /* ==========================================================================
@@ -4050,92 +4056,103 @@ function whenImagesReady() {
   })));
 }
 
-async function exportPNG(transparent) {
-  toast('正在生成高清 PNG…');
-  await whenImagesReady();
-  const c = renderExportCanvas(activePage, !transparent, 2);
-  c.toBlob((blob) => {
-    if (blob) downloadBlob(blob, (roomData.name || '手账') + '-' + activePage.name + '.png');
-  }, 'image/png');
+let exportProgressTimer = null;
+
+function setExportProgress(pct, label) {
+  const wrap = $('#exportProgress');
+  if (!wrap) return;
+  clearTimeout(exportProgressTimer); // 新进度会取消上一次的自动隐藏，避免误隐藏
+  wrap.classList.remove('hidden');
+  $('#exportProgressBar').style.width = Math.max(0, Math.min(100, pct)) + '%';
+  if (label) $('#exportProgressLabel').textContent = label;
 }
 
-function base64ToHex(b64) {
-  const bin = atob(b64);
-  let hex = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bin.length; i += chunk) {
-    let s = '';
-    const end = Math.min(bin.length, i + chunk);
-    for (let j = i; j < end; j++) s += bin.charCodeAt(j).toString(16).padStart(2, '0');
-    hex += s + '\n';
+function hideExportProgress() {
+  const wrap = $('#exportProgress');
+  if (wrap) wrap.classList.add('hidden');
+}
+
+function setExportBusy(busy) {
+  for (const id of ['expPngT', 'expPngW', 'expPdf']) {
+    const el = $('#' + id);
+    if (el) el.disabled = busy;
   }
-  return hex;
+}
+
+async function exportPNG(transparent) {
+  toast('正在生成高清 PNG…');
+  setExportBusy(true);
+  try {
+    setExportProgress(10, '正在加载图片…');
+    await whenImagesReady();
+    setExportProgress(55, '正在渲染页面…');
+    const c = renderExportCanvas(activePage, !transparent, 2);
+    const blob = await new Promise((resolve) => c.toBlob(resolve, 'image/png'));
+    setExportProgress(90, '正在下载…');
+    if (blob) downloadBlob(blob, (roomData.name || '手账') + '-' + activePage.name + '.png');
+    setExportProgress(100, 'PNG 导出完成');
+    toast('PNG 已导出', 'ok');
+  } catch (e) {
+    console.error(e);
+    toast('PNG 导出失败：' + e.message, 'error');
+  } finally {
+    setExportBusy(false);
+    exportProgressTimer = setTimeout(hideExportProgress, 1500);
+  }
 }
 
 async function exportPDF() {
-  toast('正在生成 PDF…（共 ' + roomData.pages.length + ' 页）');
-  // 未加载的页面先按需拉取，确保导出不丢内容
-  pageLoading = true;
-  showLoading(true);
-  for (const p of roomData.pages) {
-    if (!p.loaded) {
-      const ok = await loadPageContent(p.id);
-      if (!ok) toast('页面「' + p.name + '」加载失败，导出已跳过', 'error');
+  const total = roomData.pages.length;
+  toast('正在生成 PDF…（共 ' + total + ' 页）');
+  setExportBusy(true);
+  try {
+    // 未加载的页面先按需拉取，确保导出不丢内容（进度条替代全屏加载遮罩）
+    pageLoading = true;
+    setExportProgress(5, '正在加载页面…');
+    let loaded = 0;
+    for (const p of roomData.pages) {
+      if (!p.loaded) {
+        const ok = await loadPageContent(p.id);
+        if (!ok) toast('页面「' + p.name + '」加载失败，导出已跳过', 'error');
+      }
+      loaded++;
+      setExportProgress(5 + Math.round((loaded / total) * 20), '正在加载页面… ' + loaded + '/' + total);
     }
-  }
-  pageLoading = false;
-  showLoading(false);
-  await whenImagesReady();
-  const pageW = 595.28, pageH = 841.89; // A4（pt）
-  const renderScale = 1.5; // 导出画布倍率（JPEG 实际像素 = 逻辑尺寸 × 此倍率）
-  const scale = pageW / (LOGICAL_W * renderScale);
+    pageLoading = false;
+    setExportProgress(28, '正在加载图片…');
+    await whenImagesReady();
 
-  const objs = {};
-  let nextId = 1;
-  objs[nextId++] = '<< /Type /Catalog /Pages 2 0 R >>';
-  // 对象 2 预留给 Pages 字典：若让图片先占用对象 2，后面的 Pages 赋值会覆盖第一张图，
-  // 导致第一页的 /Im0 指向 Pages 字典而渲染空白
-  const pagesId = nextId++;
+    // 用 pdf-lib 组装：每个手账页按 PNG 导出同款方式渲染成 PNG，再嵌入 A4 页面
+    const doc = await PDFLib.PDFDocument.create();
+    const pageW = 595.28, pageH = 841.89; // A4（pt）
+    const renderScale = 1.5; // 导出画布倍率（与 PNG 同一条渲染路径，PNG 宽高比恰为 A4）
 
-  // 每个手账页渲染成一张 JPEG，作为 PDF 的一页 A4
-  const imgIds = [];
-  for (const page of roomData.pages) {
-    const c = renderExportCanvas(page, true, renderScale);
-    const hex = base64ToHex(c.toDataURL('image/jpeg', 0.92).split(',')[1]);
-    imgIds.push(nextId);
-    // /Width /Height 必须等于 JPEG 实际像素（c.width/c.height），否则阅读器拒绝绘制该图 → 空白页
-    objs[nextId++] = '<< /Type /XObject /Subtype /Image /Width ' + c.width + ' /Height ' + c.height
-      + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length ' + (hex.length + 1) + ' >>\nstream\n'
-      + hex + '>\nendstream';
-  }
+    let rendered = 0;
+    for (const page of roomData.pages) {
+      setExportProgress(28 + Math.round((rendered / total) * 60), '正在渲染页面… ' + (rendered + 1) + '/' + total);
+      const c = renderExportCanvas(page, true, renderScale);
+      const png = await new Promise((resolve) => c.toBlob(resolve, 'image/png'));
+      const img = await doc.embedPng(await png.arrayBuffer());
+      const p = doc.addPage([pageW, pageH]);
+      p.drawImage(img, { x: 0, y: 0, width: pageW, height: pageH });
+      rendered++;
+      setExportProgress(28 + Math.round((rendered / total) * 60), '已渲染 ' + rendered + '/' + total + ' 页');
+    }
 
-  const kids = [];
-  for (let i = 0; i < roomData.pages.length; i++) {
-    const stream = 'q\n' + scale + ' 0 0 ' + scale + ' 0 0 cm\n/Im' + i + ' Do\nQ';
-    const contentId = nextId++;
-    objs[contentId] = '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream';
-    const pageId = nextId++;
-    objs[pageId] = '<< /Type /Page /Parent ' + pagesId + ' 0 R /MediaBox [0 0 ' + pageW + ' ' + pageH + ']'
-      + ' /Resources << /XObject << /Im' + i + ' ' + imgIds[i] + ' 0 R >> >> /Contents ' + contentId + ' 0 R >>';
-    kids.push(pageId);
+    setExportProgress(92, '正在生成 PDF…');
+    const bytes = await doc.save();
+    setExportProgress(97, '正在下载…');
+    downloadBlob(new Blob([bytes], { type: 'application/pdf' }), (roomData.name || '手账') + '.pdf');
+    setExportProgress(100, 'PDF 导出完成');
+    toast('PDF 已导出', 'ok');
+  } catch (e) {
+    console.error(e);
+    toast('PDF 导出失败：' + e.message, 'error');
+  } finally {
+    pageLoading = false;
+    setExportBusy(false);
+    exportProgressTimer = setTimeout(hideExportProgress, 1500);
   }
-  objs[pagesId] = '<< /Type /Pages /Kids [' + kids.map((id) => id + ' 0 R').join(' ') + '] /Count ' + kids.length + ' >>';
-
-  let out = '%PDF-1.4\n';
-  const offsets = [0];
-  for (let id = 1; id < nextId; id++) {
-    offsets[id] = out.length;
-    out += id + ' 0 obj\n' + objs[id] + '\nendobj\n';
-  }
-  const xrefStart = out.length;
-  out += 'xref\n0 ' + nextId + '\n0000000000 65535 f \n';
-  for (let id = 1; id < nextId; id++) {
-    out += String(offsets[id]).padStart(10, '0') + ' 00000 n \n';
-  }
-  out += 'trailer\n<< /Size ' + nextId + ' /Root 1 0 R >>\nstartxref\n' + xrefStart + '\n%%EOF';
-
-  downloadBlob(new Blob([out], { type: 'application/pdf' }), (roomData.name || '手账') + '.pdf');
-  toast('PDF 已导出', 'ok');
 }
 
 function openExportModal() {
@@ -4147,6 +4164,10 @@ function openExportModal() {
       + '<button class="btn" id="expPngT">PNG · 透明背景</button>'
       + '<button class="btn" id="expPngW">PNG · 白色背景</button>'
       + '<button class="btn" id="expPdf">PDF · A4 分页</button>'
+      + '</div>'
+      + '<div class="exp-prog hidden" id="exportProgress">'
+      + '<div class="exp-prog-label" id="exportProgressLabel">准备导出…</div>'
+      + '<div class="exp-prog-track"><div class="exp-prog-bar" id="exportProgressBar"></div></div>'
       + '</div>',
     buttons: [{ label: '关闭', value: false }],
   });

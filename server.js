@@ -314,6 +314,12 @@ app.get(['/', '/index.html'], (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// 前端静态资源：vendor 目录仅白名单放行（当前只有 pdf-lib.min.js），防目录穿越
+app.get('/vendor/:file', (req, res) => {
+  if (req.params.file !== 'pdf-lib.min.js') return res.status(404).json({ error: 'Not found' });
+  res.sendFile(path.join(__dirname, 'vendor', 'pdf-lib.min.js'));
+});
+
 app.get('/api/health', (req, res) => res.json({ ok: true, time: Date.now() }));
 
 // 房间列表
