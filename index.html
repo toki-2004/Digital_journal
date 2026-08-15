@@ -4087,19 +4087,24 @@ async function exportPDF() {
   showLoading(false);
   await whenImagesReady();
   const pageW = 595.28, pageH = 841.89; // A4（pt）
-  const scale = pageW / LOGICAL_W;
+  const renderScale = 1.5; // 导出画布倍率（JPEG 实际像素 = 逻辑尺寸 × 此倍率）
+  const scale = pageW / (LOGICAL_W * renderScale);
 
   const objs = {};
   let nextId = 1;
   objs[nextId++] = '<< /Type /Catalog /Pages 2 0 R >>';
+  // 对象 2 预留给 Pages 字典：若让图片先占用对象 2，后面的 Pages 赋值会覆盖第一张图，
+  // 导致第一页的 /Im0 指向 Pages 字典而渲染空白
+  const pagesId = nextId++;
 
   // 每个手账页渲染成一张 JPEG，作为 PDF 的一页 A4
   const imgIds = [];
   for (const page of roomData.pages) {
-    const c = renderExportCanvas(page, true, 1.5);
+    const c = renderExportCanvas(page, true, renderScale);
     const hex = base64ToHex(c.toDataURL('image/jpeg', 0.92).split(',')[1]);
     imgIds.push(nextId);
-    objs[nextId++] = '<< /Type /XObject /Subtype /Image /Width ' + LOGICAL_W + ' /Height ' + LOGICAL_H
+    // /Width /Height 必须等于 JPEG 实际像素（c.width/c.height），否则阅读器拒绝绘制该图 → 空白页
+    objs[nextId++] = '<< /Type /XObject /Subtype /Image /Width ' + c.width + ' /Height ' + c.height
       + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length ' + (hex.length + 1) + ' >>\nstream\n'
       + hex + '>\nendstream';
   }
@@ -4110,11 +4115,11 @@ async function exportPDF() {
     const contentId = nextId++;
     objs[contentId] = '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream';
     const pageId = nextId++;
-    objs[pageId] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pageW + ' ' + pageH + ']'
+    objs[pageId] = '<< /Type /Page /Parent ' + pagesId + ' 0 R /MediaBox [0 0 ' + pageW + ' ' + pageH + ']'
       + ' /Resources << /XObject << /Im' + i + ' ' + imgIds[i] + ' 0 R >> >> /Contents ' + contentId + ' 0 R >>';
     kids.push(pageId);
   }
-  objs[2] = '<< /Type /Pages /Kids [' + kids.map((id) => id + ' 0 R').join(' ') + '] /Count ' + kids.length + ' >>';
+  objs[pagesId] = '<< /Type /Pages /Kids [' + kids.map((id) => id + ' 0 R').join(' ') + '] /Count ' + kids.length + ' >>';
 
   let out = '%PDF-1.4\n';
   const offsets = [0];
