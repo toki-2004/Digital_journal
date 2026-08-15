@@ -7,6 +7,9 @@ data/
 # 个人提示词（非项目代码）
 require.md
 
+# 内部开发交接文档（仅本地保留，本人与本地助手使用，不入库）
+DEVELOPER_NOTES.md
+
 # 运行日志 / PID
 server.log
 server-error.log
