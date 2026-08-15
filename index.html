@@ -201,6 +201,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .float-inspector .rot-hint { font-size: 11px; color: var(--muted); padding: 0 4px; white-space: nowrap; }
 .float-inspector .lock-note { font-size: 11px; color: var(--danger); padding: 0 6px; }
 .float-inspector .creator-note { font-size: 11px; color: var(--muted); padding: 0 4px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.float-inspector .multi-note { font-size: 11px; color: var(--accent); font-weight: 600; padding: 0 4px; white-space: nowrap; }
 .readonly-banner {
   position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
   background: #fbf3d9; color: #8a6d1c; font-size: 12px; border-radius: 20px;
@@ -404,7 +405,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 
   <div class="editor-body">
     <aside class="toolbar" id="toolbar">
-      <button class="tool-btn active" data-tool="select" title="选择 / 移动 (V)">
+      <button class="tool-btn active" data-tool="select" title="选择 / 移动 (V，空白处拖拽可框选多个元素)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 8-6.2 1.6L9.5 18 5 3z"/></svg>
         <span class="kbd">V</span>
       </button>
@@ -472,6 +473,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
           <span class="rot-hint hidden" id="inspRotHint">拖动上方圆点可旋转</span>
           <span class="lock-note hidden" id="inspLockNote"></span>
           <span class="creator-note hidden" id="inspCreator"></span>
+          <span class="multi-note hidden" id="inspMultiNote"></span>
         </div>
       </div>
       <div class="readonly-banner hidden" id="readonlyBanner">只读模式：当前仅创建者可编辑</div>
@@ -940,6 +942,7 @@ let canvasWrap = null;
 let currentTool = 'select';
 let toolColor = '#e34f4f';
 let selectedId = null;
+let selectedIds = new Set();
 let hoveredId = null;
 let currentAction = null;
 let isAdmin = false;
@@ -1138,8 +1141,18 @@ function draw() {
     }
   }
 
-  if (hoveredId && hoveredId !== selectedId) drawSelectionOutline(ctx, hoveredId, 'rgba(47,111,235,.4)');
-  if (selectedId) drawSelectionOutline(ctx, selectedId, '#2f6feb');
+  if (hoveredId && !selectedIds.has(hoveredId)) drawSelectionOutline(ctx, hoveredId, 'rgba(47,111,235,.4)', true);
+  if (selectedIds.size) {
+    if (selectedIds.size === 1) {
+      drawSelectionOutline(ctx, selectedId, '#2f6feb');
+    } else {
+      for (const id of selectedIds) {
+        if (id !== selectedId) drawSelectionOutline(ctx, id, 'rgba(47,111,235,.55)', true);
+      }
+      drawSelectionOutline(ctx, selectedId, '#2f6feb', true);
+      drawGroupOutline(ctx);
+    }
+  }
   drawActionPreview(ctx);
 }
 
@@ -1290,7 +1303,7 @@ function bboxOf(id) {
   return { x: x1, y: y1, w: Math.max(...xs) - x1, h: Math.max(...ys) - y1 };
 }
 
-function drawSelectionOutline(ctx, id, color) {
+function drawSelectionOutline(ctx, id, color, simple) {
   const el = findElement(id);
   if (!el) return;
   const c = elementCenter(el);
@@ -1305,6 +1318,7 @@ function drawSelectionOutline(ctx, id, color) {
   ctx.setLineDash([6, 4]);
   ctx.strokeRect(-hw - 3, -hh - 3, hw * 2 + 6, hh * 2 + 6);
   ctx.setLineDash([]);
+  if (simple) { ctx.restore(); return; }
   ctx.beginPath();
   ctx.moveTo(0, -hh - 4);
   ctx.lineTo(0, -hh - 26);
@@ -1328,8 +1342,58 @@ function drawSelectionOutline(ctx, id, color) {
   ctx.restore();
 }
 
+/** 多选时的整体虚线框与手柄（轴对齐包围盒） */
+function drawGroupOutline(ctx) {
+  const bb = selectionBBox();
+  if (!bb.w && !bb.h) return;
+  const cx = bb.x + bb.w / 2, cy = bb.y + bb.h / 2;
+  const hw = bb.w / 2, hh = bb.h / 2;
+  ctx.save();
+  ctx.strokeStyle = '#2f6feb';
+  ctx.lineWidth = 1.6 / Math.max(1, viewScale);
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(bb.x - 3, bb.y - 3, bb.w + 6, bb.h + 6);
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(cx, bb.y - 4);
+  ctx.lineTo(cx, bb.y - 26);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, bb.y - 30, 9, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = '15px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#2f6feb';
+  ctx.fillText('↻', cx, bb.y - 30);
+  const hs = 7;
+  ctx.fillStyle = '#fff';
+  for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+    const hx = cx + sx * hw, hy = cy + sy * hh;
+    ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
+    ctx.strokeRect(hx - hs / 2, hy - hs / 2, hs, hs);
+  }
+  ctx.restore();
+}
+
 function drawActionPreview(ctx) {
   if (!currentAction) return;
+  if (currentAction.type === 'marquee') {
+    const m = currentAction;
+    const x = Math.min(m.startX, m.curX), y = Math.min(m.startY, m.curY);
+    const w = Math.abs(m.curX - m.startX), h = Math.abs(m.curY - m.startY);
+    ctx.save();
+    ctx.fillStyle = 'rgba(47,111,235,.10)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#2f6feb';
+    ctx.lineWidth = 1.4 / Math.max(1, viewScale);
+    ctx.setLineDash([5, 3]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+    return;
+  }
   if (currentAction.type === 'erase') {
     const last = currentAction.points[currentAction.points.length - 1];
     if (last) {
@@ -1536,6 +1600,7 @@ function applyPersistedOp(op) {
       const del = new Set(op.deletedIds || []);
       page.annotations = annotations.filter((e) => !del.has(e.id));
       for (const stroke of op.modifiedStrokes || []) replaceElement(page.annotations, stroke);
+      removeIdsFromSelection([...del]);
       break;
     }
     case 'delete-elements': {
@@ -1543,7 +1608,7 @@ function applyPersistedOp(op) {
       page.images = images.filter((e) => !del.has(e.id));
       page.annotations = annotations.filter((e) => !del.has(e.id));
       for (const id of del) { locks.delete(id); imgCache.delete(id); }
-      if (selectedId && del.has(selectedId)) { selectedId = null; updateInspector(); }
+      removeIdsFromSelection([...del]);
       break;
     }
     case 'duplicate':
@@ -1570,8 +1635,8 @@ function applyPersistedOp(op) {
       break;
     }
     case 'clear-annotations':
+      removeIdsFromSelection(annotations.map((e) => e.id));
       page.annotations = [];
-      if (selectedId && !findElement(selectedId)) { selectedId = null; updateInspector(); }
       break;
   }
 }
@@ -1732,8 +1797,17 @@ function onPointerDown(e) {
   }
   else {
     const el = hitTest(p);
+    const shiftKey = e.shiftKey || e.metaKey;
     if (el) {
-      select(el.id);
+      const lockEl = locks.get(el.id);
+      if (shiftKey && !selectedIds.has(el.id) && lockEl && lockEl.userId !== me.id) {
+        toast(lockEl.userName + ' 正在编辑该元素', 'error');
+        return;
+      }
+      const wasSelected = selectedIds.has(el.id);
+      if (shiftKey) toggleSelect(el.id);
+      else if (!wasSelected) select(el.id);
+      if (shiftKey && wasSelected) return; // Shift 点击已选元素 = 取消选择，不触发拖动
       if (e.pointerType === 'touch') {
         // 移动端：先等待长按或拖动判定，避免误触发拖动
         pressInfo = { x: e.clientX, y: e.clientY, el };
@@ -1751,9 +1825,18 @@ function onPointerDown(e) {
       } else {
         startElementAction(p, el);
       }
+    } else if (canEdit && selectedIds.size > 1 && pointInGroupBox(p)) {
+      // 点击多选整体框的空白区域 / 手柄：整体拖动、缩放、旋转
+      startGroupAction(p);
     } else {
-      selectedId = null;
-      updateInspector();
+      // 空白处按下：开始框选；未拖拽时视为取消选择
+      hoveredId = null;
+      currentAction = {
+        type: 'marquee',
+        startX: p.x, startY: p.y, curX: p.x, curY: p.y,
+        shift: shiftKey, moved: false,
+      };
+      if (!shiftKey) clearSelection();
     }
   }
 }
@@ -1804,11 +1887,16 @@ function onPointerMove(e) {
     if (currentTool === 'select') {
       const el = hitTest(p);
       hoveredId = el ? el.id : null;
-      const lock = el ? locks.get(el.id) : null;
       let cur = 'default';
-      if (lock && lock.userId !== me.id) cur = 'not-allowed';
-      else if (el && isNearRotateHandle(p, el)) cur = 'grab';
-      else if (el) cur = 'move';
+      if (el) {
+        const lock = locks.get(el.id);
+        if (lock && lock.userId !== me.id) cur = 'not-allowed';
+        else if (selectedIds.size > 1 && selectedIds.has(el.id) && nearGroupHandle(p)) cur = nearGroupHandle(p);
+        else if (isNearRotateHandle(p, el)) cur = 'grab';
+        else cur = 'move';
+      } else if (selectedIds.size > 1 && nearGroupHandle(p)) {
+        cur = nearGroupHandle(p);
+      }
       canvasEl.style.cursor = cur;
     }
     return;
@@ -1821,56 +1909,64 @@ function onPointerMove(e) {
     layoutCanvas();
     return;
   }
+  if (act.type === 'marquee') {
+    act.curX = p.x;
+    act.curY = p.y;
+    if (Math.abs(p.x - act.startX) + Math.abs(p.y - act.startY) > 3) act.moved = true;
+    return;
+  }
   if (act.type === 'move') {
-    const el = findElement(act.id);
-    if (!el) return;
     const dx = p.x - act.startX, dy = p.y - act.startY;
     if (Math.abs(dx) + Math.abs(dy) > 1) act.moved = true;
-    if (el.kind === 'image') {
-      el.x = act.snapshot.x + dx;
-      el.y = act.snapshot.y + dy;
-      sendTransient({ type: 'image-transform', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
-    } else {
-      const s = act.snapshot;
-      if (el.kind === 'pen') el.points = s.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }));
-      else if (el.kind === 'line' || el.kind === 'arrow' || el.kind === 'rect') {
-        el.x1 = s.x1 + dx; el.y1 = s.y1 + dy; el.x2 = s.x2 + dx; el.y2 = s.y2 + dy;
-      } else if (el.kind === 'circle') { el.cx = s.cx + dx; el.cy = s.cy + dy; }
-      else if (el.kind === 'text') { el.x = s.x + dx; el.y = s.y + dy; }
-      sendTransient({ type: 'annotation-transform', element: JSON.parse(JSON.stringify(el)) });
+    for (let i = 0; i < act.ids.length; i++) {
+      const el = findElement(act.ids[i]);
+      if (!el || !act.snapshots[i]) continue;
+      Object.assign(el, act.snapshots[i]);
+      moveElementBy(el, dx, dy);
     }
+    sendTransformTransients(act);
   } else if (act.type === 'resize') {
-    const el = findElement(act.id);
-    if (!el) return;
-    const l = toLocal(p, el);
-    const sl = toLocal({ x: act.startX, y: act.startY }, el);
     const sx = act.corner[0], sy = act.corner[1];
-    const startDist = Math.max(24, Math.hypot(sl.x, sl.y));
-    const d = (sx * l.x + sy * l.y) - (sx * sl.x + sy * sl.y);
-    const factor = clamp(1 + d / startDist, 0.15, 8);
-    const tmp = JSON.parse(JSON.stringify(act.snapshot));
-    scaleElement(tmp, factor);
-    Object.assign(el, tmp);
-    act.moved = true;
-    if (el.kind === 'image') {
-      sendTransient({ type: 'image-transform', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
+    let factor;
+    if (act.ids.length === 1) {
+      const el = findElement(act.ids[0]);
+      if (!el) return;
+      const l = toLocal(p, el);
+      const sl = toLocal({ x: act.startX, y: act.startY }, el);
+      const startDist = Math.max(24, Math.hypot(sl.x, sl.y));
+      const d = (sx * l.x + sy * l.y) - (sx * sl.x + sy * sl.y);
+      factor = clamp(1 + d / startDist, 0.15, 8);
     } else {
-      sendTransient({ type: 'annotation-transform', element: JSON.parse(JSON.stringify(el)) });
+      const l = { x: p.x - act.cx, y: p.y - act.cy };
+      const sl = { x: act.startX - act.cx, y: act.startY - act.cy };
+      const startDist = Math.max(24, Math.hypot(sl.x, sl.y));
+      const d = (sx * l.x + sy * l.y) - (sx * sl.x + sy * sl.y);
+      factor = clamp(1 + d / startDist, 0.15, 8);
     }
+    act.moved = Math.abs(factor - 1) > 0.01;
+    for (let i = 0; i < act.ids.length; i++) {
+      const el = findElement(act.ids[i]);
+      if (!el || !act.snapshots[i]) continue;
+      Object.assign(el, act.snapshots[i]);
+      if (act.ids.length === 1) scaleElement(el, factor);
+      else scaleElementAround(el, act.cx, act.cy, factor);
+    }
+    sendTransformTransients(act);
   } else if (act.type === 'rotate') {
-    const el = findElement(act.id);
-    if (!el) return;
-    // 以元素中心为基准直接算屏幕角度，避免旋转过程中坐标反馈漂移
-    const cx = act.center.x, cy = act.center.y;
+    const cx = act.ids.length === 1 ? act.center.x : act.cx;
+    const cy = act.ids.length === 1 ? act.center.y : act.cy;
     const ang = Math.atan2(p.y - cy, p.x - cx);
     const startAng = Math.atan2(act.startY - cy, act.startX - cx);
-    el.rotation = (act.snapshot.rotation || 0) + (ang - startAng);
-    act.moved = true;
-    if (el.kind === 'image') {
-      sendTransient({ type: 'image-transform', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
-    } else {
-      sendTransient({ type: 'annotation-transform', element: JSON.parse(JSON.stringify(el)) });
+    const delta = ang - startAng;
+    act.moved = Math.abs(delta) > 0.01;
+    for (let i = 0; i < act.ids.length; i++) {
+      const el = findElement(act.ids[i]);
+      if (!el || !act.snapshots[i]) continue;
+      Object.assign(el, act.snapshots[i]);
+      if (act.ids.length === 1) el.rotation = (act.snapshots[i].rotation || 0) + delta;
+      else rotateElementAround(el, cx, cy, delta);
     }
+    sendTransformTransients(act);
   } else if (act.type === 'shape') {
     const el = act.element;
     if (el.kind === 'circle') {
@@ -1906,18 +2002,30 @@ function onPointerUp(e) {
   if (!act) return;
   if (act.type === 'pan') { currentAction = null; return; }
   const p = toLogical(e);
-  if (act.id) releaseLock(act.id);
+  if (act.type === 'marquee') {
+    if (act.moved) applyMarquee(act);
+    currentAction = null;
+    return;
+  }
+  if (act.ids) {
+    for (const id of act.ids) releaseLock(id);
+  }
 
   if ((act.type === 'move' || act.type === 'resize' || act.type === 'rotate') && act.moved) {
-    const el = findElement(act.id);
-    if (el && el.kind === 'image') {
-      sendOp({ type: 'transform-image', id: el.id, x: el.x, y: el.y, rotation: el.rotation || 0, width: el.width, height: el.height }, {
-        onFail: () => { const t = findElement(act.id); if (t) Object.assign(t, act.snapshot); },
-      });
-    } else if (el) {
-      sendOp({ type: 'update-annotation', element: JSON.parse(JSON.stringify(el)) }, {
-        onFail: () => { const t = findElement(act.id); if (t) Object.assign(t, act.snapshot); },
-      });
+    for (let i = 0; i < act.ids.length; i++) {
+      const id = act.ids[i];
+      const el = findElement(id);
+      if (!el) continue;
+      const snap = act.snapshots[i];
+      if (el.kind === 'image') {
+        sendOp({ type: 'transform-image', id: el.id, x: el.x, y: el.y, rotation: el.rotation || 0, width: el.width, height: el.height }, {
+          onFail: () => { const t = findElement(id); if (t && snap) Object.assign(t, snap); },
+        });
+      } else {
+        sendOp({ type: 'update-annotation', element: JSON.parse(JSON.stringify(el)) }, {
+          onFail: () => { const t = findElement(id); if (t && snap) Object.assign(t, snap); },
+        });
+      }
     }
   }
   if (act.type === 'shape') {
@@ -1928,7 +2036,7 @@ function onPointerUp(e) {
     }
     const sizeOk = el.kind === 'circle' ? el.r > 3 : Math.hypot(el.x2 - el.x1, el.y2 - el.y1) > 3;
     if (sizeOk) {
-      selectedId = el.id;
+      select(el.id);
       sendOp({ type: 'add-annotation', element: el }, { onFail: () => { removeElementLocal(el.id); } });
     } else {
       removeElementLocal(el.id);
@@ -1938,7 +2046,7 @@ function onPointerUp(e) {
   if (act.type === 'pen') {
     const el = act.element;
     if (el.points.length >= 2) {
-      selectedId = el.id;
+      select(el.id);
       sendOp({ type: 'add-annotation', element: el }, { onFail: () => { removeElementLocal(el.id); } });
     } else {
       removeElementLocal(el.id);
@@ -1957,10 +2065,9 @@ function cancelCurrentAction() {
   if (!act) return;
   if (act.type === 'shape' || act.type === 'pen') {
     if (act.element) removeElementLocal(act.element.id);
-  } else if (act.id) {
-    const el = findElement(act.id);
-    if (el && act.snapshot) Object.assign(el, act.snapshot);
-    releaseLock(act.id);
+  } else if (act.ids && act.snapshots) {
+    restoreActionSnapshots(act);
+    for (const id of act.ids) releaseLock(id);
   }
   currentAction = null;
 }
@@ -1969,31 +2076,103 @@ function removeElementLocal(id) {
   if (!roomData) return;
   roomData.images = roomData.images.filter((e) => e.id !== id);
   roomData.annotations = roomData.annotations.filter((e) => e.id !== id);
-  if (selectedId === id) { selectedId = null; updateInspector(); }
+  if (selectedIds.delete(id)) {
+    if (selectedId === id) selectedId = selectedIds.size ? [...selectedIds][selectedIds.size - 1] : null;
+    updateInspector();
+  } else if (selectedId === id) {
+    selectedId = null;
+    updateInspector();
+  }
 }
 
 function startElementAction(p, el) {
   if (!canEdit) return; // 只读模式下仅允许查看/选择
-  const lock = locks.get(el.id);
-  if (lock && lock.userId !== me.id) {
-    toast(lock.userName + ' 正在编辑该元素', 'error');
-    return;
+  let targets;
+  if (selectedIds.has(el.id)) targets = selectionList();
+  else targets = [el];
+  for (const t of targets) {
+    const lock = locks.get(t.id);
+    if (lock && lock.userId !== me.id) {
+      toast(lock.userName + ' 正在编辑元素，已取消操作', 'error');
+      return;
+    }
   }
-  const snapshot = JSON.parse(JSON.stringify(el));
-  const act = { type: 'move', id: el.id, startX: p.x, startY: p.y, snapshot, moved: false, center: elementCenter(el) };
+  const act = {
+    type: 'move',
+    ids: targets.map((t) => t.id),
+    snapshots: targets.map((t) => JSON.parse(JSON.stringify(t))),
+    startX: p.x, startY: p.y,
+    moved: false,
+    center: elementCenter(el),
+    lastSend: 0,
+  };
   currentAction = act;
 
-  // 所有元素（图片与标注）统一支持：拖动移动、角点缩放、上方圆点旋转
-  const local = toLocal(p, el);
-  let hw, hh;
-  if (el.kind === 'image') { hw = el.width / 2; hh = el.height / 2; }
-  else { const bb = bboxUnrotated(el); hw = bb.w / 2; hh = bb.h / 2; }
-  if (Math.hypot(local.x, local.y + hh + 30) < 14) {
+  if (targets.length === 1) {
+    // 单元素：使用元素自身手柄（拖动移动、角点缩放、上方圆点旋转）
+    const local = toLocal(p, el);
+    let hw, hh;
+    if (el.kind === 'image') { hw = el.width / 2; hh = el.height / 2; }
+    else { const bb = bboxUnrotated(el); hw = bb.w / 2; hh = bb.h / 2; }
+    if (Math.hypot(local.x, local.y + hh + 30) < 14) {
+      act.type = 'rotate';
+      canvasEl.style.cursor = 'grab';
+    } else {
+      for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+        if (Math.hypot(local.x - sx * hw, local.y - sy * hh) < 16) {
+          act.type = 'resize';
+          act.corner = [sx, sy];
+          canvasEl.style.cursor = 'nwse-resize';
+          break;
+        }
+      }
+    }
+  } else {
+    // 多选：使用整体虚线框手柄（任意元素 / 框内空白处均可整体拖动）
+    const bb = selectionBBox();
+    act.cx = bb.x + bb.w / 2;
+    act.cy = bb.y + bb.h / 2;
+    const hw = bb.w / 2, hh = bb.h / 2;
+    if (Math.hypot(p.x - act.cx, p.y - (act.cy - hh - 30)) < 14) {
+      act.type = 'rotate';
+      canvasEl.style.cursor = 'grab';
+    } else {
+      for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+        if (Math.hypot(p.x - (act.cx + sx * hw), p.y - (act.cy + sy * hh)) < 16) {
+          act.type = 'resize';
+          act.corner = [sx, sy];
+          canvasEl.style.cursor = 'nwse-resize';
+          break;
+        }
+      }
+    }
+  }
+  lockAllElements(act);
+}
+
+/** 点击多选整体框的空白区域时启动整体动作（拖动 / 缩放 / 旋转） */
+function startGroupAction(p) {
+  if (!canEdit || selectedIds.size < 2) return;
+  const list = selectionList();
+  const bb = selectionBBox();
+  const act = {
+    type: 'move',
+    ids: list.map((e) => e.id),
+    snapshots: list.map((e) => JSON.parse(JSON.stringify(e))),
+    startX: p.x, startY: p.y,
+    moved: false,
+    cx: bb.x + bb.w / 2,
+    cy: bb.y + bb.h / 2,
+    lastSend: 0,
+  };
+  currentAction = act;
+  const hw = bb.w / 2, hh = bb.h / 2;
+  if (Math.hypot(p.x - act.cx, p.y - (act.cy - hh - 30)) < 14) {
     act.type = 'rotate';
     canvasEl.style.cursor = 'grab';
   } else {
     for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
-      if (Math.hypot(local.x - sx * hw, local.y - sy * hh) < 16) {
+      if (Math.hypot(p.x - (act.cx + sx * hw), p.y - (act.cy + sy * hh)) < 16) {
         act.type = 'resize';
         act.corner = [sx, sy];
         canvasEl.style.cursor = 'nwse-resize';
@@ -2001,24 +2180,99 @@ function startElementAction(p, el) {
       }
     }
   }
+  lockAllElements(act);
+}
 
-  socket.emit('lock-element', { roomId: currentRoomId, elementId: el.id }, (res) => {
-    if (res && res.ok) {
-      locks.set(el.id, res.lock);
-    } else {
-      // 锁被他人抢先：回滚
-      const target = findElement(el.id);
-      if (target) Object.assign(target, snapshot);
-      if (res && res.lock) toast(res.lock.userName + ' 正在编辑该元素，已取消操作', 'error');
-      else if (res && res.reason) toast(res.reason, 'error');
-      currentAction = null;
-    }
-  });
+/** 为动作涉及的每个元素加乐观锁；任一失败则整体回滚并释放已获得的锁 */
+function lockAllElements(act) {
+  const ids = act.ids;
+  act.pending = ids.length;
+  act.failed = null;
+  for (const id of ids) {
+    socket.emit('lock-element', { roomId: currentRoomId, elementId: id }, (res) => {
+      act.pending--;
+      if (res && res.ok) {
+        locks.set(id, res.lock);
+      } else if (!act.failed) {
+        act.failed = { id, lock: res && res.lock, reason: (res && res.reason) || '无法锁定元素' };
+      }
+      if (act.pending === 0 && act.failed) {
+        if (currentAction === act) {
+          restoreActionSnapshots(act);
+          currentAction = null;
+        }
+        for (const fid of ids) {
+          const l = locks.get(fid);
+          if (l && l.userId === me.id) releaseLock(fid);
+        }
+        if (act.failed.lock) toast(act.failed.lock.userName + ' 正在编辑元素，已取消操作', 'error');
+        else toast(act.failed.reason, 'error');
+      }
+    });
+  }
+}
+
+/** 点是否落在多选整体框（含手柄区域）内 */
+function pointInGroupBox(p) {
+  if (selectedIds.size < 2) return false;
+  const bb = selectionBBox();
+  return p.x >= bb.x - 16 && p.x <= bb.x + bb.w + 16
+    && p.y >= bb.y - 46 && p.y <= bb.y + bb.h + 16;
+}
+
+/** 鼠标悬停多选框时的手柄判定：返回 'grab' / 'nwse-resize' / 'move' / null */
+function nearGroupHandle(p) {
+  if (selectedIds.size < 2) return null;
+  const bb = selectionBBox();
+  const cx = bb.x + bb.w / 2, cy = bb.y + bb.h / 2;
+  const hw = bb.w / 2, hh = bb.h / 2;
+  if (Math.hypot(p.x - cx, p.y - (cy - hh - 30)) < 14) return 'grab';
+  for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+    if (Math.hypot(p.x - (cx + sx * hw), p.y - (cy + sy * hh)) < 16) return 'nwse-resize';
+  }
+  if (p.x >= bb.x - 12 && p.x <= bb.x + bb.w + 12 && p.y >= bb.y - 12 && p.y <= bb.y + bb.h + 12) return 'move';
+  return null;
+}
+
+/** 框选结束：与选框相交的元素进入选择集 */
+function applyMarquee(act) {
+  const x1 = Math.min(act.startX, act.curX), y1 = Math.min(act.startY, act.curY);
+  const x2 = Math.max(act.startX, act.curX), y2 = Math.max(act.startY, act.curY);
+  if (x2 - x1 < 4 && y2 - y1 < 4) return; // 视为点击空白，选择已在按下时清空
+  const hit = [];
+  for (const el of renderOrder()) {
+    const bb = bboxOf(el.id);
+    if (bb.x <= x2 && bb.x + bb.w >= x1 && bb.y <= y2 && bb.y + bb.h >= y1) hit.push(el.id);
+  }
+  if (act.shift) {
+    for (const id of hit) selectedIds.add(id);
+  } else {
+    selectedIds = new Set(hit);
+  }
+  if (hit.length) selectedId = hit[hit.length - 1];
+  else if (!selectedIds.size) selectedId = null;
+  updateInspector();
+}
+
+/** 从选择集中移除若干 id（远端删除/擦除时清理） */
+function removeIdsFromSelection(ids) {
+  const has = (id) => (typeof ids.has === 'function' ? ids.has(id) : ids.indexOf(id) >= 0);
+  let changed = false;
+  for (const id of selectedIds) {
+    if (has(id)) { selectedIds.delete(id); changed = true; }
+  }
+  if (selectedId && has(selectedId)) {
+    selectedId = selectedIds.size ? [...selectedIds][selectedIds.size - 1] : null;
+    changed = true;
+  }
+  if (changed) updateInspector();
+  return changed;
 }
 
 function releaseLock(id) {
   socket.emit('unlock-element', { roomId: currentRoomId, elementId: id });
-  locks.delete(id);
+  const l = locks.get(id);
+  if (l && l.userId === me.id) locks.delete(id);
 }
 
 function startPen(p) {
@@ -2104,7 +2358,7 @@ function finishErase(act) {
     const delSet = new Set(deletedIds);
     roomData.annotations = roomData.annotations.filter((e) => !delSet.has(e.id));
     for (const s of modifiedStrokes) replaceElement(roomData.annotations, s);
-    if (selectedId && delSet.has(selectedId)) { selectedId = null; updateInspector(); }
+    removeIdsFromSelection(deletedIds);
     sendOp({ type: 'erase', deletedIds, modifiedStrokes });
   }
 }
@@ -2137,7 +2391,7 @@ function placeText(p) {
       const a = { id: uid(), kind: 'text', layer: 'annotation', color: toolColor, x: p.x, y: p.y, fontSize, text, rotation: 0 };
       stampElement(a);
       roomData.annotations.push(a);
-      selectedId = a.id;
+      select(a.id);
       sendOp({ type: 'add-annotation', element: a }, { onFail: () => removeElementLocal(a.id) });
       updateInspector();
     }
@@ -2150,33 +2404,87 @@ function placeText(p) {
 }
 
 // ---------- 选择与元素操作 ----------
+function selectionList() {
+  if (!roomData) return [];
+  return renderOrder().filter((el) => selectedIds.has(el.id));
+}
+
+/** 多选整体轴对齐包围盒（世界坐标） */
+function selectionBBox() {
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (const id of selectedIds) {
+    const bb = bboxOf(id);
+    x1 = Math.min(x1, bb.x); y1 = Math.min(y1, bb.y);
+    x2 = Math.max(x2, bb.x + bb.w); y2 = Math.max(y2, bb.y + bb.h);
+  }
+  if (x2 < x1) return { x: 0, y: 0, w: 0, h: 0 };
+  return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+
 function select(id) {
+  selectedIds = new Set([id]);
   selectedId = id;
+  updateInspector();
+}
+
+/** 替换整个选择集（anchorId 作为主元素；默认取最后一个） */
+function selectMany(ids, anchorId) {
+  selectedIds = new Set(ids);
+  selectedId = anchorId && selectedIds.has(anchorId) ? anchorId : (ids.length ? ids[ids.length - 1] : null);
+  updateInspector();
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  selectedId = null;
+  updateInspector();
+}
+
+/** Shift 点击：在保留选择集的前提下增减元素 */
+function toggleSelect(id) {
+  if (selectedIds.has(id)) {
+    if (selectedIds.size === 1) { clearSelection(); return; }
+    selectedIds.delete(id);
+    if (selectedId === id) selectedId = [...selectedIds][selectedIds.size - 1] || null;
+  } else {
+    selectedIds.add(id);
+    selectedId = id;
+  }
   updateInspector();
 }
 
 function updateInspector() {
   const insp = $('#floatInspector');
-  if (!selectedId || !findElement(selectedId)) {
+  const list = selectionList();
+  if (!list.length) {
     insp.classList.add('hidden');
     return;
   }
   insp.classList.remove('hidden');
+  const multi = list.length > 1;
   const sel = findElement(selectedId);
-  $('#inspRotHint').classList.toggle('hidden', !sel);
+  $('#inspRotHint').classList.remove('hidden');
   const cr = $('#inspCreator');
-  if (sel && sel.createdBy) {
-    cr.textContent = '创建：' + sel.createdBy.name + ' · ' + formatElementTime(sel.createdAt);
-    cr.classList.remove('hidden');
-  } else if (sel) {
-    cr.textContent = '创建：旧数据（未知）';
-    cr.classList.remove('hidden');
-  } else {
+  const multiNote = $('#inspMultiNote');
+  if (multi) {
     cr.classList.add('hidden');
+    multiNote.textContent = '已选 ' + list.length + ' 个元素 · 可整体移动 / 缩放 / 旋转';
+    multiNote.classList.remove('hidden');
+  } else {
+    multiNote.classList.add('hidden');
+    if (sel && sel.createdBy) {
+      cr.textContent = '创建：' + sel.createdBy.name + ' · ' + formatElementTime(sel.createdAt);
+      cr.classList.remove('hidden');
+    } else if (sel) {
+      cr.textContent = '创建：旧数据（未知）';
+      cr.classList.remove('hidden');
+    } else {
+      cr.classList.add('hidden');
+    }
   }
   const lock = locks.get(selectedId);
   const note = $('#inspLockNote');
-  if (lock && lock.userId !== me.id) {
+  if (!multi && lock && lock.userId !== me.id) {
     note.textContent = '🔒 ' + lock.userName + ' 正在编辑';
     note.classList.remove('hidden');
   } else {
@@ -2185,10 +2493,11 @@ function updateInspector() {
 }
 
 function deleteSelected() {
-  if (!selectedId || !canEdit) return;
-  const id = selectedId;
-  removeElementLocal(id);
-  sendOp({ type: 'delete-elements', ids: [id] });
+  const ids = [...selectedIds];
+  if (!ids.length || !canEdit) return;
+  for (const id of ids) removeElementLocal(id);
+  clearSelection();
+  sendOp({ type: 'delete-elements', ids });
 }
 
 function duplicateElement(el, dx = 26, dy = 26) {
@@ -2203,6 +2512,11 @@ function duplicateElement(el, dx = 26, dy = 26) {
   else if (clone.kind === 'pen') clone.points = clone.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }));
   else { clone.x1 += dx; clone.y1 += dy; clone.x2 += dx; clone.y2 += dy; }
   return clone;
+}
+
+/** 批量复制：每个元素按相同偏移平移 */
+function duplicateElements(list, dx = 26, dy = 26) {
+  return list.map((el) => duplicateElement(el, dx, dy));
 }
 
 /** 元素创建信息（创建人 / 创建时间） */
@@ -2248,15 +2562,72 @@ function scaleElement(el, factor) {
   }
 }
 
-/** 精确旋转选中图片（15° 步进） */
+/** 按画布坐标平移元素（所有类型统一） */
+function moveElementBy(el, dx, dy) {
+  if (!el) return;
+  if (el.kind === 'image') { el.x += dx; el.y += dy; }
+  else if (el.kind === 'circle') { el.cx += dx; el.cy += dy; }
+  else if (el.kind === 'text') { el.x += dx; el.y += dy; }
+  else if (el.kind === 'pen') el.points = el.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }));
+  else { el.x1 += dx; el.y1 += dy; el.x2 += dx; el.y2 += dy; }
+}
+
+/** 绕指定中心旋转元素：自身旋转 angle，同时位置绕中心旋转 */
+function rotateElementAround(el, cx, cy, angle) {
+  const c = elementCenter(el);
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const nx = cx + (c.x - cx) * cos - (c.y - cy) * sin;
+  const ny = cy + (c.x - cx) * sin + (c.y - cy) * cos;
+  moveElementBy(el, nx - c.x, ny - c.y);
+  el.rotation = (el.rotation || 0) + angle;
+}
+
+/** 绕指定中心等比缩放：元素自身缩放 + 位置按比例外扩 / 内收 */
+function scaleElementAround(el, cx, cy, factor) {
+  const c = elementCenter(el);
+  const nx = cx + (c.x - cx) * factor;
+  const ny = cy + (c.y - cy) * factor;
+  scaleElement(el, factor);
+  moveElementBy(el, nx - c.x, ny - c.y);
+}
+
+/** 动作快照回滚（多元素） */
+function restoreActionSnapshots(act) {
+  for (let i = 0; i < act.ids.length; i++) {
+    const el = findElement(act.ids[i]);
+    if (el && act.snapshots[i]) Object.assign(el, act.snapshots[i]);
+  }
+}
+
+/** 节流发送多元素变换预览（图片/标注分开走既有 transient 协议） */
+function sendTransformTransients(act) {
+  if (Date.now() - (act.lastSend || 0) <= 40) return;
+  act.lastSend = Date.now();
+  for (const id of act.ids) {
+    const el = findElement(id);
+    if (!el) continue;
+    if (el.kind === 'image') {
+      sendTransient({ type: 'image-transform', id: el.id, x: el.x, y: el.y, rotation: el.rotation || 0, width: el.width, height: el.height });
+    } else {
+      sendTransient({ type: 'annotation-transform', element: JSON.parse(JSON.stringify(el)) });
+    }
+  }
+}
+
+/** 精确旋转选中元素（15° 步进，多选时整体旋转） */
 function rotateSelected(deg) {
-  const el = selectedId && findElement(selectedId);
-  if (!el || !canEdit) return;
-  el.rotation = (el.rotation || 0) + deg * Math.PI / 180;
-  if (el.kind === 'image') {
-    sendOp({ type: 'transform-image', id: el.id, x: el.x, y: el.y, rotation: el.rotation, width: el.width, height: el.height });
-  } else {
-    sendOp({ type: 'update-annotation', element: JSON.parse(JSON.stringify(el)) });
+  const list = selectionList();
+  if (!list.length || !canEdit) return;
+  const angle = deg * Math.PI / 180;
+  const bb = selectionBBox();
+  const cx = bb.x + bb.w / 2, cy = bb.y + bb.h / 2;
+  for (const el of list) {
+    rotateElementAround(el, cx, cy, angle);
+    if (el.kind === 'image') {
+      sendOp({ type: 'transform-image', id: el.id, x: el.x, y: el.y, rotation: el.rotation || 0, width: el.width, height: el.height });
+    } else {
+      sendOp({ type: 'update-annotation', element: JSON.parse(JSON.stringify(el)) });
+    }
   }
 }
 
@@ -2294,22 +2665,29 @@ function hideElementMenu() {
 }
 
 function duplicateSelected() {
-  const el = selectedId && findElement(selectedId);
-  if (!el || !canEdit) return;
-  const clone = duplicateElement(el);
-  if (clone.layer === 'image') { roomData.images.push(clone); ensureImage(clone); }
-  else roomData.annotations.push(clone);
-  selectedId = clone.id;
-  sendOp({ type: 'duplicate', elements: [clone] });
-  updateInspector();
+  const list = selectionList();
+  if (!list.length || !canEdit) return;
+  const clones = duplicateElements(list);
+  const cloneIds = [];
+  for (const clone of clones) {
+    cloneIds.push(clone.id);
+    if (clone.layer === 'image') { roomData.images.push(clone); ensureImage(clone); }
+    else roomData.annotations.push(clone);
+  }
+  selectMany(cloneIds, cloneIds[cloneIds.length - 1]);
+  sendOp({ type: 'duplicate', elements: clones });
 }
 
 function reorderSelected(mode) {
-  const el = selectedId && findElement(selectedId);
-  if (!el || !canEdit) return;
+  const list = selectionList();
+  if (!list.length || !canEdit) return;
   // 全局层级：图片与标注统一排序，图片也可以浮到笔迹之上
-  setElementZ(el, mode);
-  sendOp({ type: 'reorder', ids: [el.id], mode });
+  const ids = [];
+  for (const el of list) {
+    setElementZ(el, mode);
+    ids.push(el.id);
+  }
+  sendOp({ type: 'reorder', ids, mode });
 }
 
 function setElementZ(el, mode) {
@@ -2342,7 +2720,7 @@ async function addImageFromFile(file) {
       stampElement(el);
       imgCache.set(el.id, img);
       roomData.images.push(el);
-      selectedId = el.id;
+      select(el.id);
       sendOp({ type: 'add-image', element: el }, { onFail: () => removeElementLocal(el.id) });
       updateInspector();
       toast('图片已添加', 'ok');
@@ -2490,6 +2868,7 @@ function updatePermUI() {
 async function openRoom(roomId, password) {
   joinPassword = password || '';
   currentRoomId = roomId;
+  selectedIds = new Set();
   selectedId = null;
   hoveredId = null;
   currentAction = null;
@@ -2547,6 +2926,7 @@ function goHome() {
   roomData = null;
   activePage = null;
   activePageId = null;
+  selectedIds = new Set();
   selectedId = null;
   currentAction = null;
   locks = new Map();
@@ -2608,6 +2988,7 @@ function switchPage(id, silent) {
   if (!p) return;
   activePage = p;
   activePageId = p.id;
+  selectedIds = new Set();
   selectedId = null;
   hoveredId = null;
   if (currentAction) cancelCurrentAction();
@@ -2640,8 +3021,7 @@ function addPage() {
   roomData.pages.push(page);
   activePage = page;
   activePageId = page.id;
-  selectedId = null;
-  updateInspector();
+  clearSelection();
   renderPageBar();
   sendOp({ type: 'add-page', page: JSON.parse(JSON.stringify(page)) });
   toast('已新增「' + page.name + '」', 'ok');
@@ -2807,8 +3187,7 @@ function bindUI() {
     }).then((ok) => {
       if (!ok) return;
       roomData.annotations = [];
-      selectedId = null;
-      updateInspector();
+      clearSelection();
       sendOp({ type: 'clear-annotations' });
     });
   };
@@ -2856,18 +3235,21 @@ function bindUI() {
     if (e.key === ' ') { spaceDown = true; e.preventDefault(); return; }
     if (!roomData) return;
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
-    else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C') && selectedId) {
-      const el = findElement(selectedId);
-      if (el) { copyBuffer = el; toast('已复制元素，Ctrl+V 粘贴', 'ok'); }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C') && selectedIds.size) {
+      copyBuffer = selectionList();
+      toast('已复制 ' + copyBuffer.length + ' 个元素，Ctrl+V 粘贴', 'ok');
     }
-    else if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V') && copyBuffer) {
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V') && copyBuffer && copyBuffer.length) {
       e.preventDefault();
-      const clone = duplicateElement(copyBuffer);
-      if (clone.layer === 'image') { roomData.images.push(clone); ensureImage(clone); }
-      else roomData.annotations.push(clone);
-      selectedId = clone.id;
-      sendOp({ type: 'duplicate', elements: [clone] });
-      updateInspector();
+      const clones = duplicateElements(copyBuffer);
+      const cloneIds = [];
+      for (const clone of clones) {
+        cloneIds.push(clone.id);
+        if (clone.layer === 'image') { roomData.images.push(clone); ensureImage(clone); }
+        else roomData.annotations.push(clone);
+      }
+      selectMany(cloneIds, cloneIds[cloneIds.length - 1]);
+      sendOp({ type: 'duplicate', elements: clones });
     }
     else if (!e.ctrlKey && !e.metaKey && e.key === 'v') setTool('select');
     else if (e.key === 'p') setTool('pen');
