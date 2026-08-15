@@ -1,4 +1,7 @@
 {
+  "name": "digital-journal",
+  "version": "1.0.0",
+  "license": "MIT",
   "dependencies": {
     "express": "^5.2.1",
     "socket.io": "^4.8.3"

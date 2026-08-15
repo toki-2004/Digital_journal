@@ -27,3 +27,7 @@ node server.js
 ## 数据
 
 所有手账数据保存在 `./data/` 目录下的 JSON 文件中，删除该目录即清空全部数据。
+
+## License
+
+MIT License，详见 [LICENSE](LICENSE)。
