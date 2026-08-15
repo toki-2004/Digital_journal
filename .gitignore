@@ -4,11 +4,17 @@ node_modules/
 # 本地运行数据（手账内容，不上传）
 data/
 
+# 用户导入的字体文件（服务器运行时数据，不上传）
+fonts/
+
 # 个人提示词（非项目代码）
 require.md
 
 # 内部开发交接文档（仅本地保留，本人与本地助手使用，不入库）
 DEVELOPER_NOTES.md
+
+# 字体修复前的原始文件备份（仅本地保留，不入库）
+_font_backup/
 
 # 运行日志 / PID
 server.log

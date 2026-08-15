@@ -48,6 +48,11 @@ const HOST = process.env.HOST || '0.0.0.0';
 const DATA_DIR = path.join(__dirname, 'data');
 const INDEX_FILE = path.join(DATA_DIR, 'rooms.json');
 const MAX_BODY = 100 * 1024 * 1024; // 100MB，容纳压缩后的图片 Base64
+const FONT_DIR = path.join(__dirname, 'fonts');
+const FONT_INDEX_FILE = path.join(FONT_DIR, 'fonts.json');
+const FONT_EXTS = ['ttf', 'otf', 'woff', 'woff2'];
+const FONT_MIME = { ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' };
+const MAX_FONT = 30 * 1024 * 1024; // 单个字体文件上限 30MB
 
 /* ---------------------------------------------------------------------------
  * 工具函数：JSON 读写（原子写入 + 每把钥匙一条串行队列）
@@ -182,6 +187,81 @@ function deleteRoomFile(id) {
   enqueue('room:' + id, () => {
     if (fs.existsSync(file)) fs.unlinkSync(file);
   });
+}
+
+/* ---------------------------------------------------------------------------
+ * 字体库（fonts/ 目录 + fonts.json 清单）：全服务器共享，任何房间都可用
+ * ------------------------------------------------------------------------- */
+let fontIndex = null;
+
+function ensureFontDir() {
+  if (!fs.existsSync(FONT_DIR)) fs.mkdirSync(FONT_DIR, { recursive: true });
+}
+
+function fontExtOf(name) {
+  const m = /\.([A-Za-z0-9]+)$/.exec(String(name));
+  return m ? m[1].toLowerCase() : '';
+}
+
+/** 从文件名提炼展示名（去扩展名、去路径分隔符等危险字符，限长） */
+function fontBaseName(name) {
+  const base = String(name)
+    .replace(/\.[^.]+$/, '')
+    .replace(/[\\/:"*?<>|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (base || '未命名字体').slice(0, 40);
+}
+
+function fontFileNameOk(name) {
+  return /^[A-Za-z0-9._-]+$/.test(String(name)) && FONT_EXTS.includes(fontExtOf(name));
+}
+
+/** 启动时加载字体清单；条目文件丢失则剔除，手动放入目录的文件自动补登记 */
+function loadFontIndex() {
+  ensureFontDir();
+  const raw = readJSON(FONT_INDEX_FILE, null);
+  const fonts = (raw && Array.isArray(raw.fonts)) ? raw.fonts : [];
+  const seen = new Set();
+  const clean = [];
+  for (const f of fonts) {
+    if (f && f.id && fontFileNameOk(f.fileName) && fs.existsSync(path.join(FONT_DIR, f.fileName))) {
+      seen.add(f.fileName);
+      clean.push(f);
+    }
+  }
+  let changed = clean.length !== fonts.length;
+  for (const name of fs.readdirSync(FONT_DIR)) {
+    if (seen.has(name) || name === 'fonts.json' || !fontFileNameOk(name)) continue;
+    const file = path.join(FONT_DIR, name);
+    let stat = null;
+    try { stat = fs.statSync(file); } catch { continue; }
+    if (!stat.isFile()) continue;
+    const id = 'f_' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    clean.push({
+      id,
+      name: fontBaseName(name),
+      fileName: name,
+      format: fontExtOf(name),
+      size: stat.size,
+      uploadedAt: new Date().toISOString(),
+    });
+    seen.add(name);
+    changed = true;
+  }
+  fontIndex = { fonts: clean };
+  if (changed) persistFontIndex();
+  return fontIndex;
+}
+
+function getFontIndex() {
+  if (!fontIndex) fontIndex = loadFontIndex();
+  return fontIndex;
+}
+
+function persistFontIndex() {
+  const snap = fontIndex || { fonts: [] };
+  enqueue('fonts', () => writeJSONAtomic(FONT_INDEX_FILE, snap));
 }
 
 function hashPassword(pw, roomId) {
@@ -362,6 +442,89 @@ app.get('/api/rooms/:id/page/:pageId', (req, res) => {
     images: page.images || [],
     annotations: page.annotations || [],
   });
+});
+
+/* ---------------------------------------------------------------------------
+ * 字体库 REST API：列表 / 上传 / 删除 / 静态托管
+ * ------------------------------------------------------------------------- */
+// 静态托管字体文件：只允许白名单扩展名与安全文件名，避免目录穿越
+app.get('/fonts/:file', (req, res) => {
+  const name = req.params.file;
+  if (!fontFileNameOk(name)) return res.status(400).json({ error: '非法字体文件' });
+  const file = path.join(FONT_DIR, name);
+  if (!fs.existsSync(file)) return res.status(404).json({ error: '字体文件不存在' });
+  res.setHeader('Content-Type', FONT_MIME[fontExtOf(name)]);
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  fs.createReadStream(file).pipe(res);
+});
+
+// 字体列表
+app.get('/api/fonts', (req, res) => {
+  res.json({ fonts: getFontIndex().fonts });
+});
+
+// 上传字体：请求体为字体原始字节流，文件名经 query 传入（如 ?name=xxx.ttf）
+app.post('/api/fonts', (req, res) => {
+  const ext = fontExtOf(String(req.query.name || ''));
+  if (!FONT_EXTS.includes(ext)) {
+    return res.status(400).json({ error: '仅支持 ttf / otf / woff / woff2 字体文件' });
+  }
+  const chunks = [];
+  let size = 0;
+  let aborted = false;
+  req.on('data', (chunk) => {
+    if (aborted) return;
+    size += chunk.length;
+    if (size > MAX_FONT) {
+      aborted = true;
+      res.status(413).json({ error: '字体文件过大（上限 30MB）' });
+      req.removeAllListeners('data');
+      req.resume(); // 丢弃剩余数据，让连接正常收尾
+    } else {
+      chunks.push(chunk);
+    }
+  });
+  req.on('end', () => {
+    if (aborted) return;
+    const buf = Buffer.concat(chunks);
+    if (!buf.length) return res.status(400).json({ error: '字体文件内容为空' });
+    // 校验文件头（magic bytes），防止伪装成字体的其他文件
+    const magicMap = { ttf: 0x00010000, otf: 0x4f54544f, woff: 0x774f4646, woff2: 0x774f4632 };
+    if (buf.length < 4 || buf.readUInt32BE(0) !== magicMap[ext]) {
+      return res.status(400).json({ error: '文件内容与扩展名不匹配，可能不是有效的字体文件' });
+    }
+    ensureFontDir();
+    const id = 'f_' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    const fileName = id + '.' + ext;
+    fs.writeFileSync(path.join(FONT_DIR, fileName), buf);
+    const entry = {
+      id,
+      name: fontBaseName(String(req.query.name || '')),
+      fileName,
+      format: ext,
+      size: buf.length,
+      uploadedAt: new Date().toISOString(),
+    };
+    getFontIndex().fonts.push(entry);
+    persistFontIndex();
+    res.status(201).json({ font: entry });
+  });
+  req.on('error', () => {
+    if (!aborted) res.status(400).json({ error: '上传失败' });
+  });
+});
+
+// 删除字体（已使用该字体的既有文字会自动回退到默认字体）
+app.delete('/api/fonts/:id', (req, res) => {
+  const idx = getFontIndex().fonts.findIndex((f) => f.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: '字体不存在' });
+  const entry = getFontIndex().fonts.splice(idx, 1)[0];
+  persistFontIndex();
+  const file = path.join(FONT_DIR, entry.fileName);
+  try {
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  } catch (e) { /* 文件已缺失时忽略 */ }
+  res.json({ ok: true });
 });
 
 /* ---------------------------------------------------------------------------
@@ -755,6 +918,7 @@ function stripRoomHistories() {
 }
 
 getIndex(); // 启动时确保索引就绪
+getFontIndex(); // 启动时确保字体清单就绪
 stripRoomHistories();
 server.listen(PORT, HOST, () => {
   console.log('==============================================');
@@ -763,5 +927,6 @@ server.listen(PORT, HOST, () => {
   console.log('  LAN:        http://<your-ip>:' + PORT);
   console.log('  Tunnel:     ngrok http ' + PORT + '  (or frp forward this port)');
   console.log('  Data dir:   ' + DATA_DIR);
+  console.log('  Fonts dir:  ' + FONT_DIR);
   console.log('==============================================');
 });

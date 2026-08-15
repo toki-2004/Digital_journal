@@ -156,6 +156,18 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 }
 .tool-divider { width: 32px; height: 1px; background: var(--line); margin: 7px 0; }
 .tool-settings { display: flex; flex-direction: column; align-items: center; gap: 7px; padding-top: 6px; }
+.font-picker-btn {
+  width: 44px; height: 42px; border: none; background: transparent; border-radius: 8px;
+  color: var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; position: relative; transition: background .12s;
+}
+.font-picker-btn:hover { background: #f0f0ee; }
+.font-picker-btn.active { background: var(--accent-soft); color: var(--accent); }
+.font-picker-btn .fp-label { font-size: 12px; line-height: 1; }
+.font-picker-btn .fp-current {
+  font-size: 9px; color: var(--muted); max-width: 40px; line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
 .swatch {
   width: 17px; height: 17px; border-radius: 50%; border: 2px solid #fff;
@@ -255,6 +267,57 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 }
 .pl-spinner { width: 30px; height: 30px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- 字体选择面板（右侧弹出） ---------- */
+.font-panel {
+  position: absolute; top: 18px; right: 18px; bottom: 60px; width: 288px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow); z-index: 25; display: flex; flex-direction: column;
+  overflow: hidden; animation: fpIn .18s ease;
+}
+@keyframes fpIn { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+.fp-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px 8px; border-bottom: 1px solid var(--line);
+}
+.fp-title { font-weight: 600; font-size: 14px; }
+.fp-close {
+  border: none; background: transparent; color: var(--muted); font-size: 20px;
+  width: 26px; height: 26px; border-radius: 6px; cursor: pointer; line-height: 1;
+}
+.fp-close:hover { background: #f0f0ee; color: var(--ink); }
+.fp-search { padding: 10px 12px 4px; }
+.fp-search input {
+  width: 100%; border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 10px; font-size: 13px; outline: none;
+}
+.fp-search input:focus { border-color: var(--accent); }
+.fp-list {
+  flex: 1; overflow-y: auto; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.fp-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 1px solid transparent; border-radius: 8px; cursor: pointer; position: relative;
+}
+.fp-item:hover { background: #f7f7f5; }
+.fp-item.active { border-color: var(--accent); background: var(--accent-soft); }
+.fp-preview {
+  font-size: 18px; line-height: 1.35; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 118px; flex: 0 0 auto;
+}
+.fp-meta {
+  font-size: 11px; color: var(--muted); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fp-del {
+  border: none; background: transparent; color: var(--muted); font-size: 16px;
+  width: 24px; height: 24px; border-radius: 6px; cursor: pointer; flex: 0 0 auto; line-height: 1;
+}
+.fp-del:hover { background: #fdecec; color: var(--danger); }
+.fp-foot { border-top: 1px solid var(--line); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.fp-hint { font-size: 11px; color: var(--muted); }
+.fp-foot .btn { width: 100%; }
 
 /* ---------- 右侧边栏 ---------- */
 .sidebar {
@@ -358,6 +421,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
   .page-bar { bottom: 56px; }
   .zoom-pill { right: 12px; bottom: 102px; }
   .float-inspector { bottom: 102px; left: 8px; right: 176px; transform: none; max-width: none; justify-content: flex-start; }
+  .font-panel { right: 12px; top: 12px; bottom: 112px; width: min(300px, calc(100vw - 24px)); }
 }
 </style>
 </head>
@@ -453,6 +517,10 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
           <label>字号</label>
           <input type="range" id="fontSize" min="12" max="72" value="26">
         </div>
+        <button class="font-picker-btn" id="btnFontPicker" title="字体选择（文字工具 / 选中文字时）">
+          <span class="fp-label">字体</span>
+          <span class="fp-current" id="fontNameLabel">默认</span>
+        </button>
       </div>
     </aside>
 
@@ -477,6 +545,19 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
         </div>
       </div>
       <div class="readonly-banner hidden" id="readonlyBanner">只读模式：当前仅创建者可编辑</div>
+      <div class="font-panel hidden" id="fontPanel">
+        <div class="fp-head">
+          <span class="fp-title">字体</span>
+          <button class="fp-close" id="fpClose" title="关闭">×</button>
+        </div>
+        <div class="fp-search"><input type="text" id="fpSearch" placeholder="搜索字体…"></div>
+        <div class="fp-list" id="fpList"></div>
+        <div class="fp-foot">
+          <button class="btn" id="fpImport">＋ 导入字体</button>
+          <span class="fp-hint">支持 ttf / otf / woff / woff2，上传到服务器后所有房间可用</span>
+          <input type="file" id="fpFile" class="hidden" accept=".ttf,.otf,.woff,.woff2,font/*">
+        </div>
+      </div>
       <div class="page-bar" id="pageBar">
         <div class="page-tabs" id="pageTabs"></div>
         <button class="page-add" id="btnAddPage" title="新增页面">＋</button>
@@ -941,6 +1022,9 @@ let ctx2d = null;
 let canvasWrap = null;
 let currentTool = 'select';
 let toolColor = '#e34f4f';
+let toolFont = 'system'; // 当前文字字体（默认/内置/服务器导入）
+let serverFonts = [];    // 服务器字体库 [{ id, name, fileName, format, size, uploadedAt }]
+let fontPanelOpen = false;
 let selectedId = null;
 let selectedIds = new Set();
 let hoveredId = null;
@@ -961,6 +1045,19 @@ let pressTimer = null;   // 触屏长按定时器
 let pressInfo = null;    // 触屏按下时的候选元素
 let longPressActive = false;
 const imgCache = new Map(); // imageId -> HTMLImageElement
+
+// 内置字体：无需上传即可使用；css 为 canvas / CSS 的 font-family 值
+const BUILTIN_FONTS = [
+  { id: 'system', name: '默认', css: '"PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif' },
+  { id: 'yahei', name: '微软雅黑', css: '"Microsoft YaHei","PingFang SC",sans-serif' },
+  { id: 'kai', name: '楷体', css: '"KaiTi","STKaiti","Kaiti SC","楷体",serif' },
+  { id: 'song', name: '宋体', css: '"SimSun","Songti SC","NSimSun","宋体",serif' },
+  { id: 'hei', name: '黑体', css: '"Heiti SC","SimHei","PingFang SC",sans-serif' },
+  { id: 'serif', name: '衬线', css: 'Georgia,"Times New Roman","Songti SC",serif' },
+  { id: 'mono', name: '等宽', css: '"Cascadia Code","JetBrains Mono","Consolas","Courier New",monospace' },
+];
+
+try { toolFont = localStorage.getItem('dj_tool_font') || 'system'; } catch (e) { /* 忽略 */ }
 
 function findElement(id) {
   if (!roomData) return null;
@@ -1228,7 +1325,7 @@ function drawAnnotation(ctx, a, withLock = true) {
       break;
     }
     case 'text': {
-      ctx.font = (a.fontSize || 26) + 'px "PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif';
+      ctx.font = (a.fontSize || 26) + 'px ' + fontStack(a.fontFamily || 'system');
       ctx.textBaseline = 'top';
       const lines = String(a.text || '').split('\n');
       lines.forEach((line, i) => ctx.fillText(line, a.x, a.y + i * (a.fontSize || 26) * 1.25));
@@ -1252,7 +1349,7 @@ function drawLockBadge(ctx, id) {
 
 function textMetrics(el) {
   const fs = el.fontSize || 26;
-  ctx2d.font = fs + 'px "PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif';
+  ctx2d.font = fs + 'px ' + fontStack(el.fontFamily || 'system');
   const lines = String(el.text || '').split('\n');
   let w = 0;
   for (const line of lines) w = Math.max(w, ctx2d.measureText(line).width);
@@ -2373,6 +2470,7 @@ function placeText(p) {
   el.style.left = sp.x + 'px';
   el.style.top = sp.y + 'px';
   el.style.fontSize = (fontSize * viewScale) + 'px';
+  el.style.fontFamily = fontStack(toolFont);
   el.dataset.size = fontSize;
   el.dataset.lx = p.x;
   el.dataset.ly = p.y;
@@ -2388,7 +2486,7 @@ function placeText(p) {
     const text = el.value;
     el.remove();
     if (text.trim()) {
-      const a = { id: uid(), kind: 'text', layer: 'annotation', color: toolColor, x: p.x, y: p.y, fontSize, text, rotation: 0 };
+      const a = { id: uid(), kind: 'text', layer: 'annotation', color: toolColor, x: p.x, y: p.y, fontSize, fontFamily: toolFont, text, rotation: 0 };
       stampElement(a);
       roomData.annotations.push(a);
       select(a.id);
@@ -2489,6 +2587,12 @@ function updateInspector() {
     note.classList.remove('hidden');
   } else {
     note.classList.add('hidden');
+  }
+  // 单选文字元素时，把面板当前字体同步为该元素的字体
+  if (!multi && sel && sel.kind === 'text' && sel.fontFamily && sel.fontFamily !== toolFont) {
+    toolFont = sel.fontFamily;
+    updateFontLabel();
+    if (fontPanelOpen) renderFontPanel();
   }
 }
 
@@ -3144,12 +3248,191 @@ function openSettings() {
   });
 }
 
+// ---------- 字体 ----------
+/** 字体 id -> CSS font-family 字符串；服务器字体走 @font-face 的 djfont-<id> 族名 */
+function fontStack(id) {
+  const b = BUILTIN_FONTS.find((f) => f.id === id);
+  if (b) return b.css;
+  if (serverFonts.some((f) => f.id === id)) return '"djfont-' + id + '",sans-serif';
+  return BUILTIN_FONTS[0].css;
+}
+
+function fontNameOf(id) {
+  const b = BUILTIN_FONTS.find((f) => f.id === id);
+  if (b) return b.name;
+  const sf = serverFonts.find((f) => f.id === id);
+  return sf ? sf.name : '默认';
+}
+
+function updateFontLabel() {
+  const el = $('#fontNameLabel');
+  if (el) el.textContent = fontNameOf(toolFont);
+}
+
+/** 把服务器字体注入为 @font-face，并预热字体供 canvas 测量/渲染 */
+/** 扩展名 -> CSS format() 合法值：ttf 必须写作 truetype、otf 写作 opentype，
+ *  否则 Chromium 会把 format 判为非法并丢弃整个 src，字体永远不会加载 */
+function fontFormatOf(ext) {
+  if (ext === 'ttf') return 'truetype';
+  if (ext === 'otf') return 'opentype';
+  return ext; // woff / woff2
+}
+
+function injectFontFaces() {
+  let style = $('#djFontFaces');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'djFontFaces';
+    document.head.appendChild(style);
+  }
+  style.textContent = serverFonts.map((f) =>
+    "@font-face{font-family:'djfont-" + f.id + "';src:url('/fonts/" + f.fileName + "') format('" + fontFormatOf(f.format) + "');font-display:swap;}"
+  ).join('\n');
+  if (!document.fonts || !document.fonts.load) return;
+  Promise.all(serverFonts.map((f) => document.fonts.load('24px "djfont-' + f.id + '"', '测试Aa123'))).catch(() => {});
+}
+
+async function loadFonts() {
+  try {
+    const data = await fetchJSON('/api/fonts', {}, 8000);
+    serverFonts = (data && data.fonts) || [];
+    // 本地记住的字体若已被删除，则回退到默认
+    if (toolFont !== 'system' && !BUILTIN_FONTS.some((f) => f.id === toolFont) && !serverFonts.some((f) => f.id === toolFont)) {
+      toolFont = 'system';
+      try { localStorage.setItem('dj_tool_font', 'system'); } catch (e) { /* 忽略 */ }
+    }
+    injectFontFaces();
+    updateFontLabel();
+  } catch (e) { /* 服务不可用时不打扰用户，仅使用内置字体 */ }
+}
+
+function renderFontPanel() {
+  const list = $('#fpList');
+  if (!list) return;
+  const q = ($('#fpSearch').value || '').trim().toLowerCase();
+  const all = BUILTIN_FONTS.map((f) => ({ id: f.id, name: f.name, css: f.css, server: false }))
+    .concat(serverFonts.map((f) => ({ id: f.id, name: f.name, css: '"djfont-' + f.id + '",sans-serif', server: true })));
+  const fonts = all.filter((f) => !q || f.name.toLowerCase().indexOf(q) >= 0);
+  list.innerHTML = fonts.map((f) => {
+    const active = f.id === toolFont ? ' active' : '';
+    const del = f.server ? '<button class="fp-del" data-del="' + esc(f.id) + '" title="删除该字体">×</button>' : '';
+    return '<div class="fp-item' + active + '" data-font="' + esc(f.id) + '">'
+      + '<span class="fp-preview" style="font-family:' + esc(f.css) + '">Aa 你好 123</span>'
+      + '<span class="fp-meta">' + esc(f.name) + (f.server ? ' · 已导入' : '') + '</span>'
+      + del + '</div>';
+  }).join('');
+  for (const item of list.querySelectorAll('.fp-item')) {
+    item.onclick = (e) => {
+      if (e.target.closest('.fp-del')) return;
+      setToolFont(item.dataset.font);
+    };
+  }
+  for (const delBtn of list.querySelectorAll('.fp-del')) {
+    delBtn.onclick = (e) => {
+      e.stopPropagation();
+      deleteFont(delBtn.dataset.del);
+    };
+  }
+}
+
+function openFontPanel() {
+  fontPanelOpen = true;
+  $('#fontPanel').classList.remove('hidden');
+  $('#btnFontPicker').classList.add('active');
+  renderFontPanel();
+}
+
+function closeFontPanel() {
+  fontPanelOpen = false;
+  $('#fontPanel').classList.add('hidden');
+  $('#btnFontPicker').classList.remove('active');
+}
+
+function toggleFontPanel() {
+  if (fontPanelOpen) closeFontPanel();
+  else openFontPanel();
+}
+
+/** 切换当前字体；有选中的文字元素时一并应用 */
+function setToolFont(id) {
+  toolFont = id;
+  try { localStorage.setItem('dj_tool_font', id); } catch (e) { /* 忽略 */ }
+  updateFontLabel();
+  if (fontPanelOpen) renderFontPanel();
+  const changed = [];
+  for (const el of selectionList()) {
+    if (el.kind === 'text' && el.fontFamily !== id) {
+      el.fontFamily = id;
+      changed.push(el);
+    }
+  }
+  for (const el of changed) {
+    sendOp({ type: 'update-annotation', element: JSON.parse(JSON.stringify(el)) });
+  }
+  if (changed.length) toast('已应用到所选 ' + changed.length + ' 个文字', 'ok');
+}
+
+function deleteFont(id) {
+  const f = serverFonts.find((x) => x.id === id);
+  if (!f) return;
+  openModal({
+    title: '删除字体',
+    body: '<p>删除「' + esc(f.name) + '」后，使用该字体的既有文字将回退到默认字体。<br>确定删除吗？</p>',
+    buttons: [{ label: '取消', value: false }, { label: '删除', value: true, danger: true }],
+  }).then(async (ok) => {
+    if (!ok) return;
+    try {
+      await fetchJSON('/api/fonts/' + id, { method: 'DELETE', body: '{}' });
+      serverFonts = serverFonts.filter((x) => x.id !== id);
+      if (toolFont === id) setToolFont('system');
+      injectFontFaces();
+      renderFontPanel();
+      toast('字体已删除', 'ok');
+    } catch (e) { toast(e.message, 'error'); }
+  });
+}
+
+async function uploadFont(file) {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (!['ttf', 'otf', 'woff', 'woff2'].includes(ext)) {
+    toast('仅支持 ttf / otf / woff / woff2 字体文件', 'error');
+    return;
+  }
+  if (file.size > 30 * 1024 * 1024) {
+    toast('字体文件过大（上限 30MB）', 'error');
+    return;
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 60000);
+  try {
+    toast('正在上传字体…');
+    const res = await fetch('/api/fonts?name=' + encodeURIComponent(file.name), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+      signal: ctrl.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('上传失败（HTTP ' + res.status + '）'));
+    serverFonts.push(data.font);
+    injectFontFaces();
+    renderFontPanel();
+    setToolFont(data.font.id);
+    toast('字体「' + data.font.name + '」已导入', 'ok');
+  } catch (e) {
+    toast(e.name === 'AbortError' ? '上传超时，请重试' : e.message, 'error');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ---------- 工具栏 / 快捷键 ----------
 function setTool(t) {
   currentTool = t;
   for (const b of document.querySelectorAll('#toolbar .tool-btn')) {
     b.classList.toggle('active', b.dataset.tool === t);
   }
+  if (t === 'text') openFontPanel(); // 文字工具：右侧自动弹出字体选择
 }
 
 function setupSwatches() {
@@ -3169,9 +3452,18 @@ function setupSwatches() {
 
 function bindUI() {
   for (const b of document.querySelectorAll('#toolbar .tool-btn')) {
-    if (b.id === 'btnUploadImage' || b.id === 'btnClearAnno') continue;
+    if (b.id === 'btnUploadImage' || b.id === 'btnClearAnno' || b.id === 'btnFontPicker') continue;
     b.onclick = () => setTool(b.dataset.tool);
   }
+  $('#btnFontPicker').onclick = toggleFontPanel;
+  $('#fpClose').onclick = closeFontPanel;
+  $('#fpImport').onclick = () => $('#fpFile').click();
+  $('#fpFile').onchange = (e) => {
+    const f = e.target.files[0];
+    if (f) uploadFont(f);
+    e.target.value = '';
+  };
+  $('#fpSearch').oninput = renderFontPanel;
   $('#btnUploadImage').onclick = () => $('#imageInput').click();
   $('#imageInput').onchange = (e) => {
     const f = e.target.files[0];
@@ -3446,6 +3738,8 @@ function init() {
   setupSwatches();
   bindUI();
   setupCanvas();
+  loadFonts();
+  updateFontLabel();
   loadRooms();
   initIDB().catch(() => {});
 }
