@@ -291,6 +291,7 @@ function sanitizeRoom(room, locks) {
     lastModified: room.lastModified,
     revision: room.revision || 0,
     hasPassword: !!room.password,
+    cover: room.cover || null,
     messages: (room.messages || []).slice(-100), // 最近 100 条聊天，仅本房间可见
     pages: (room.pages || []).map((p) => ({
       id: p.id,

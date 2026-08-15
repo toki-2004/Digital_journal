@@ -479,10 +479,13 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .radio-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; }
 .radio-row input { accent-color: var(--accent); }
 .cover-picker { display: flex; align-items: center; gap: 12px; }
-.cover-picker img, .cover-picker .no-cover {
+.cover-picker img, .cover-picker .cover-prev {
   width: 72px; height: 48px; border-radius: 8px; object-fit: cover;
-  border: 1px solid var(--line); background: #f0f0ee; flex: 0 0 72px;
-  display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px;
+  border: 1px solid var(--line); flex: 0 0 72px;
+}
+.cover-picker .cover-prev.no-cover {
+  background: #f0f0ee; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 11px;
 }
 .modal-actions { padding: 10px 20px 18px; display: flex; justify-content: flex-end; gap: 8px; }
 .modal-actions .spacer { flex: 1; }
@@ -1053,23 +1056,22 @@ function renderRoomGrid(list) {
 }
 
 async function createRoomFlow() {
-  const form = await (() => {
-    const p = openModal({
-      title: '新建手账本',
-      body: '<div class="field"><label class="f-label">名称</label><input type="text" id="crName" maxlength="40" placeholder="例如：旅行手账"></div>'
-        + '<div class="field"><label class="f-label">访问密码（可选，留空则无需密码）</label><input type="password" id="crPass" placeholder="协作者需要密码才能进入"></div>'
-        + '<div class="field"><label class="f-label">编辑权限</label><div class="radio-row">'
-        + '<label><input type="radio" name="crPerm" value="editable" checked> 可编辑（协作者可共同绘制）</label>'
-        + '<label><input type="radio" name="crPerm" value="readonly"> 只读（仅创建者可编辑）</label>'
-        + '</div></div>'
-        + '<div class="field"><label class="f-label">封面（可选）</label>'
-        + '<div class="cover-picker"><div id="crCover" class="no-cover">封面</div>'
-        + '<div style="display:flex;gap:8px"><button type="button" class="btn" id="crCoverBtn">上传封面</button><button type="button" class="btn ghost" id="crCoverClear">移除</button></div>'
-        + '<input type="file" id="crCoverInput" accept="image/*" class="hidden"></div></div>',
-      buttons: [{ label: '取消', value: false }, { label: '创建', value: true, primary: true }],
-    });
-    return p;
-  })();
+  // 先打开弹窗并立即绑定封面相关事件（openModal 返回 Promise，若 await 后再绑定，
+  // 弹窗打开期间「上传封面」按钮将没有任何事件）
+  const form = openModal({
+    title: '新建手账本',
+    body: '<div class="field"><label class="f-label">名称</label><input type="text" id="crName" maxlength="40" placeholder="例如：旅行手账"></div>'
+      + '<div class="field"><label class="f-label">访问密码（可选，留空则无需密码）</label><input type="password" id="crPass" placeholder="协作者需要密码才能进入"></div>'
+      + '<div class="field"><label class="f-label">编辑权限</label><div class="radio-row">'
+      + '<label><input type="radio" name="crPerm" value="editable" checked> 可编辑（协作者可共同绘制）</label>'
+      + '<label><input type="radio" name="crPerm" value="readonly"> 只读（仅创建者可编辑）</label>'
+      + '</div></div>'
+      + '<div class="field"><label class="f-label">封面（可选）</label>'
+        + '<div class="cover-picker"><div id="crCover" class="cover-prev no-cover">封面</div>'
+      + '<div style="display:flex;gap:8px"><button type="button" class="btn" id="crCoverBtn">上传封面</button><button type="button" class="btn ghost" id="crCoverClear">移除</button></div>'
+      + '<input type="file" id="crCoverInput" accept="image/*" class="hidden"></div></div>',
+    buttons: [{ label: '取消', value: false }, { label: '创建', value: true, primary: true }],
+  });
 
   let coverData = null;
   const input = $('#crCoverInput');
@@ -1221,6 +1223,7 @@ function snapshotForIDB() {
     createdAt: roomData.createdAt,
     lastModified: roomData.lastModified,
     revision: roomData.revision || 0,
+    cover: roomData.cover || null,
     activePageId,
     pages: roomData.pages.map((p) => ({
       id: p.id,
@@ -3012,7 +3015,7 @@ function setElementZ(el, mode) {
 }
 
 // ---------- 图片上传 ----------
-async function addImageFromFile(file) {
+async function addImageFromFile(file, bringToFront) {
   if (!canEdit) { toast('只读模式，无法上传图片', 'error'); return; }
   try {
     const dataUrl = await compressImage(file, 1600, 0.85);
@@ -3025,6 +3028,7 @@ async function addImageFromFile(file) {
         x: LOGICAL_W / 2, y: LOGICAL_H / 2,
         width: img.width * s, height: img.height * s, rotation: 0,
       };
+      if (bringToFront) setElementZ(el, 'front'); // 粘贴的图片自动置顶（z = 全局 max+1）
       stampElement(el);
       imgCache.set(el.id, img);
       roomData.images.push(el);
@@ -3063,6 +3067,7 @@ function applyServerData(data) {
     createdAt: data.createdAt,
     lastModified: data.lastModified,
     revision: data.revision || 0,
+    cover: data.cover || null,
     pages,
     messages: Array.isArray(data.messages) ? data.messages.slice(-200) : [],
   };
@@ -3402,6 +3407,10 @@ function openSettings() {
       + '<label><input type="radio" name="setPerm" value="editable"' + (roomData.editPermission !== 'readonly' ? ' checked' : '') + '> 可编辑</label>'
       + '<label><input type="radio" name="setPerm" value="readonly"' + (roomData.editPermission === 'readonly' ? ' checked' : '') + '> 只读（仅创建者可编辑）</label>'
       + '</div></div>'
+      + '<div class="field"><label class="f-label">封面</label>'
+      + '<div class="cover-picker"><div id="setCover" class="cover-prev no-cover">封面</div>'
+      + '<div style="display:flex;gap:8px"><button type="button" class="btn" id="setCoverBtn">上传封面</button><button type="button" class="btn ghost" id="setCoverClear">移除</button></div>'
+      + '<input type="file" id="setCoverInput" accept="image/*" class="hidden"></div></div>'
       + '<div class="field" style="border-top:1px solid var(--line);padding-top:12px"><button class="btn danger" id="setDeleteBtn">删除该手账本…</button></div>'
     : '<div class="room-info-box">名称：' + esc(roomData.name) + '<br>权限：' + (roomData.editPermission === 'readonly' ? '只读' : '可编辑') + '<br>您不是创建者，无法修改房间设置。</div>';
 
@@ -3412,6 +3421,37 @@ function openSettings() {
       + '<div style="border-top:1px solid var(--line);padding-top:12px;margin-top:14px">' + roomSection + '</div>',
     buttons: [{ label: '取消', value: false }, { label: '保存', value: true, primary: true }],
   });
+  // 封面修改状态：null=未设置/已移除；字符串=新选图片；changed 标记用户是否动过
+  let setCoverData = null;
+  let setCoverChanged = false;
+  const setInput = $('#setCoverInput');
+  const setPreview = $('#setCover');
+  if (setPreview && roomData.cover) {
+    setCoverData = roomData.cover;
+    setPreview.style.background = 'url(' + setCoverData + ') center/cover';
+    setPreview.textContent = '';
+    setPreview.classList.remove('no-cover');
+  }
+  if (setInput) {
+    $('#setCoverBtn').onclick = () => setInput.click();
+    $('#setCoverClear').onclick = () => {
+      setCoverData = null; setCoverChanged = true;
+      setPreview.style.background = '';
+      setPreview.textContent = '封面';
+      setPreview.classList.add('no-cover');
+    };
+    setInput.onchange = async () => {
+      const f = setInput.files[0];
+      if (!f) return;
+      try {
+        setCoverData = await compressImage(f, 360, 0.8);
+        setCoverChanged = true;
+        setPreview.style.background = 'url(' + setCoverData + ') center/cover';
+        setPreview.textContent = '';
+        setPreview.classList.remove('no-cover');
+      } catch (e) { toast(e.message, 'error'); }
+    };
+  }
   const delBtn = $('#setDeleteBtn');
   if (delBtn) delBtn.onclick = () => {
     openModal({
@@ -3441,12 +3481,14 @@ function openSettings() {
       name,
       editPermission: document.querySelector('input[name=setPerm]:checked').value,
     };
+    if (setCoverChanged) body.cover = setCoverData || ''; // 空串让服务端清空封面
     if ($('#setClearPass').checked) body.password = '';
     else if ($('#setPass').value) body.password = $('#setPass').value;
     try {
       const res = await fetchJSON('/api/rooms/' + roomData.id, { method: 'PATCH', body: JSON.stringify(body) });
       roomData.name = res.name;
       roomData.editPermission = res.editPermission;
+      if (setCoverChanged) roomData.cover = setCoverData || null;
       $('#roomName').textContent = res.name;
       updatePermUI();
       toast('设置已保存', 'ok');
@@ -3937,7 +3979,7 @@ function bindUI() {
       if (it.type && it.type.startsWith('image/')) {
         e.preventDefault();
         const f = it.getAsFile();
-        if (f) addImageFromFile(f);
+        if (f) addImageFromFile(f, true);
         return;
       }
     }
