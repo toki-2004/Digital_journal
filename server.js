@@ -405,6 +405,7 @@ app.patch('/api/rooms/:id', (req, res) => {
     name: meta.name,
     editPermission: meta.editPermission,
     hasPassword: !!meta.password,
+    cover: meta.cover || null,
   });
   res.json({ ok: true, name: meta.name, editPermission: meta.editPermission });
 });
@@ -436,6 +437,7 @@ app.get('/api/rooms/:id/data', (req, res) => {
   room.createdBy = meta.createdBy;
   room.createdAt = meta.createdAt;
   room.password = meta.password;
+  room.cover = meta.cover;
   res.json(sanitizeRoom(room, roomLocks.get(req.params.id)));
 });
 
@@ -781,6 +783,7 @@ io.on('connection', (socket) => {
     room.createdBy = meta.createdBy;
     room.createdAt = meta.createdAt;
     room.password = meta.password;
+    room.cover = meta.cover;
     doAck({ ok: true, data: sanitizeRoom(room, roomLocks.get(roomId)) });
     broadcastMembers(roomId);
     broadcastRoomOnline(roomId);

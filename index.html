@@ -1051,6 +1051,7 @@ socket.on('room-settings', (p) => {
   if (!roomData) return;
   roomData.name = p.name;
   roomData.editPermission = p.editPermission;
+  if (p && 'cover' in p) roomData.cover = p.cover || null;
   $('#roomName').textContent = p.name;
   updatePermUI();
   toast('房间设置已更新');
@@ -3671,6 +3672,7 @@ function openSettings() {
       roomData.name = res.name;
       roomData.editPermission = res.editPermission;
       if (setCoverChanged) roomData.cover = setCoverData || null;
+      idbPut(snapshotForIDB());
       $('#roomName').textContent = res.name;
       updatePermUI();
       toast('设置已保存', 'ok');
