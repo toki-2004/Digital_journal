@@ -97,6 +97,11 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
   background: rgba(0,0,0,.55); color: #fff; font-size: 11px;
   padding: 2px 7px; border-radius: 20px; backdrop-filter: blur(2px);
 }
+.badge.online { background: rgba(21,135,80,.9); }
+.badge.online::before {
+  content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: #a7f0c4; margin-right: 5px; vertical-align: 1px;
+}
 .room-meta { padding: 12px 14px 14px; }
 .room-name { font-size: 15px; font-weight: 600; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-time { color: var(--muted); font-size: 12px; }
@@ -1056,6 +1061,11 @@ socket.on('room-deleted', () => {
   goHome();
 });
 
+socket.on('room-online', (p) => {
+  if (!p || !p.roomId) return;
+  updateRoomOnlineBadge(p.roomId, p.online || 0);
+});
+
 socket.on('chat-message', (msg) => {
   if (!roomData || !msg || msg.text == null) return;
   if (!Array.isArray(roomData.messages)) roomData.messages = [];
@@ -1109,7 +1119,9 @@ function renderRoomGrid(list) {
     const cover = r.cover
       ? '<img src="' + r.cover + '" alt="封面">'
       : '<div class="cover-placeholder" style="background:' + roomGradient(r.id) + '">' + esc(r.name.slice(0, 1)) + '</div>';
-    const badges = (r.hasPassword ? '<span class="badge">🔒 密码</span>' : '') + (r.editPermission === 'readonly' ? '<span class="badge">只读</span>' : '');
+    const badges = (r.online > 0 ? '<span class="badge online">' + r.online + ' 人在线</span>' : '')
+      + (r.hasPassword ? '<span class="badge">🔒 密码</span>' : '')
+      + (r.editPermission === 'readonly' ? '<span class="badge">只读</span>' : '');
     return '<div class="room-card" data-id="' + esc(r.id) + '">'
       + '<div class="room-actions">'
       + '<button class="icon-btn" data-act="rename" title="重命名">✎</button>'
@@ -1129,6 +1141,27 @@ function renderRoomGrid(list) {
     card.querySelector('[data-act=rename]').onclick = (e) => { e.stopPropagation(); renameRoom(room); };
     card.querySelector('[data-act=delete]').onclick = (e) => { e.stopPropagation(); deleteRoom(room); };
   }
+}
+
+// 首页封面上的在线人数徽章：收到 room-online 广播时就地更新，不整页重渲染
+function updateRoomOnlineBadge(roomId, online) {
+  const card = document.querySelector('.room-card[data-id="' + CSS.escape(String(roomId)) + '"]');
+  if (!card) return;
+  const cover = card.querySelector('.room-cover');
+  let badges = card.querySelector('.room-badges');
+  if (!badges) {
+    badges = document.createElement('div');
+    badges.className = 'room-badges';
+    if (cover) cover.appendChild(badges);
+  }
+  let badge = badges.querySelector('.badge.online');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'badge online';
+    badges.insertBefore(badge, badges.firstChild);
+  }
+  badge.style.display = online > 0 ? '' : 'none';
+  badge.textContent = online + ' 人在线';
 }
 
 async function createRoomFlow() {

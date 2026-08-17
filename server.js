@@ -335,6 +335,7 @@ app.get('/api/rooms', (req, res) => {
       editPermission: r.editPermission,
       hasPassword: !!r.password,
       cover: r.cover || null,
+      online: roomMembers.has(r.id) ? roomMembers.get(r.id).size : 0,
     }))
     .sort((a, b) => String(b.lastModified).localeCompare(String(a.lastModified)));
   res.json(list);
@@ -568,6 +569,12 @@ function broadcastMembers(roomId) {
   io.to(roomId).emit('members', memberList(roomId));
 }
 
+/** 房间在线人数变化时广播给所有客户端（首页房间列表据此实时刷新封面人数徽章） */
+function broadcastRoomOnline(roomId) {
+  const map = roomMembers.get(roomId);
+  io.emit('room-online', { roomId, online: map ? map.size : 0 });
+}
+
 function releaseUserLocks(roomId, userId) {
   let changed = false;
   for (const [key, lock] of roomLocks) {
@@ -740,7 +747,17 @@ io.on('connection', (socket) => {
       return doAck({ ok: false, reason: '访问密码错误' });
     }
 
-    if (socket.data.roomId) socket.leave(socket.data.roomId);
+    // 若 socket 之前加入了别的房间，先清掉旧房间的成员记录（保证人数统计准确）
+    if (socket.data.roomId && socket.data.roomId !== roomId) {
+      socket.leave(socket.data.roomId);
+      const prevMap = roomMembers.get(socket.data.roomId);
+      if (prevMap) {
+        prevMap.delete(socket.id);
+        if (!prevMap.size) roomMembers.delete(socket.data.roomId);
+        broadcastMembers(socket.data.roomId);
+        broadcastRoomOnline(socket.data.roomId);
+      }
+    }
     socket.join(roomId);
     socket.data.roomId = roomId;
     socket.data.user = {
@@ -766,6 +783,7 @@ io.on('connection', (socket) => {
     room.password = meta.password;
     doAck({ ok: true, data: sanitizeRoom(room, roomLocks.get(roomId)) });
     broadcastMembers(roomId);
+    broadcastRoomOnline(roomId);
   });
 
   socket.on('leave-room', () => {
@@ -778,6 +796,7 @@ io.on('connection', (socket) => {
       map.delete(socket.id);
       if (!map.size) roomMembers.delete(roomId);
       broadcastMembers(roomId);
+      broadcastRoomOnline(roomId);
     }
     delete socket.data.roomId;
   });
@@ -935,6 +954,7 @@ io.on('connection', (socket) => {
       map.delete(socket.id);
       if (!map.size) roomMembers.delete(roomId);
       broadcastMembers(roomId);
+      broadcastRoomOnline(roomId);
     }
   });
 });
